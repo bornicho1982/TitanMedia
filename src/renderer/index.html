@@ -30,7 +30,7 @@
             </div>
 
             <!-- Sources Panel -->
-            <div class="flex flex-col bg-gray-800 rounded-lg border border-gray-700">
+            <div class="relative flex flex-col bg-gray-800 rounded-lg border border-gray-700">
                 <div class="flex items-center justify-between p-2 border-b border-gray-700">
                     <h2 class="font-bold">Fuentes</h2>
                     <div>
@@ -41,6 +41,16 @@
                 <ul id="source-list" class="flex-grow p-2 overflow-y-auto">
                     <!-- Source items will be populated by JavaScript -->
                 </ul>
+                <!-- Source Selection Menu -->
+                <div id="source-menu" class="hidden absolute bottom-12 left-0 mb-1 w-full p-2 bg-gray-700 rounded-lg shadow-xl z-10">
+                    <ul class="space-y-1">
+                        <li><button data-source-id="video_capture_device" class="w-full text-left px-2 py-1 rounded hover:bg-gray-600">Dispositivo de Captura de Video</button></li>
+                        <li><button data-source-id="game_capture" class="w-full text-left px-2 py-1 rounded hover:bg-gray-600">Captura de Juego</button></li>
+                        <li><button data-source-id="browser_source" class="w-full text-left px-2 py-1 rounded hover:bg-gray-600">Fuente de Navegador</button></li>
+                        <li><button data-source-id="audio_input_capture" class="w-full text-left px-2 py-1 rounded hover:bg-gray-600">Entrada de Audio (Mic)</button></li>
+                        <li><button data-source-id="audio_output_capture" class="w-full text-left px-2 py-1 rounded hover:bg-gray-600">Salida de Audio (Escritorio)</button></li>
+                    </ul>
+                </div>
             </div>
         </footer>
     </div>

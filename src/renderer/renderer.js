@@ -4,6 +4,7 @@ const sceneList = document.getElementById('scene-list');
 const sourceList = document.getElementById('source-list');
 const addSceneButton = document.getElementById('add-scene-button');
 const addSourceButton = document.getElementById('add-source-button');
+const sourceMenu = document.getElementById('source-menu');
 
 let animationFrameId;
 let activeScene = '';
@@ -68,18 +69,80 @@ addSceneButton.addEventListener('click', async () => {
     }
 });
 
-addSourceButton.addEventListener('click', async () => {
+addSourceButton.addEventListener('click', () => {
     if (!activeScene) {
         alert("Please select a scene first!");
         return;
     }
+    sourceMenu.classList.toggle('hidden');
+});
+
+const sourceIdMapping = {
+    video_capture_device: {
+        win32: 'dshow_input',
+        linux: 'v4l2_input',
+        darwin: 'av_capture_input',
+        name: 'Dispositivo de Captura de Video'
+    },
+    game_capture: {
+        win32: 'game_capture',
+        linux: 'xcomposite_input', // A reasonable equivalent
+        darwin: 'display_capture', // Game capture not directly available on macOS
+        name: 'Captura de Juego'
+    },
+    browser_source: {
+        win32: 'browser_source',
+        linux: 'browser_source',
+        darwin: 'browser_source',
+        name: 'Fuente de Navegador'
+    },
+    audio_input_capture: {
+        win32: 'wasapi_input_capture',
+        linux: 'pulse_input_capture',
+        darwin: 'coreaudio_input_capture',
+        name: 'Entrada de Audio'
+    },
+    audio_output_capture: {
+        win32: 'wasapi_output_capture',
+        linux: 'pulse_output_capture',
+        darwin: 'coreaudio_output_capture',
+        name: 'Salida de Audio'
+    }
+};
+
+sourceMenu.addEventListener('click', async (event) => {
+    const target = event.target.closest('button');
+    if (!target) return;
+
+    const genericId = target.dataset.sourceId;
+    if (!genericId) return;
+
+    sourceMenu.classList.add('hidden');
+
+    const platform = window.platform.os;
+    const sourceInfo = sourceIdMapping[genericId];
+    if (!sourceInfo) {
+        console.error(`Unknown source ID: ${genericId}`);
+        return;
+    }
+
+    const sourceId = sourceInfo[platform];
+    if (!sourceId) {
+        alert(`La fuente '${sourceInfo.name}' no está soportada en tu sistema operativo (${platform}).`);
+        return;
+    }
+
     try {
-        // For now, it just adds a video capture source as a test
-        await window.core.addVideoCapture(activeScene);
-        console.log(`Added video capture source to ${activeScene}`);
+        const existingSources = await window.core.getSceneSources(activeScene);
+        const count = existingSources.filter(s => s.name.startsWith(sourceInfo.name)).length;
+        const sourceName = `${sourceInfo.name} ${count + 1}`;
+
+        await window.core.addSource(activeScene, sourceId, sourceName);
+        console.log(`Added source '${sourceName}' (${sourceId}) to scene '${activeScene}'`);
         await updateSourceList(activeScene);
     } catch (error) {
-        console.error(`Failed to add source to scene: ${activeScene}`, error);
+        console.error(`Failed to add source to scene:`, error);
+        alert(`Error al añadir la fuente: ${error.message}`);
     }
 });
 

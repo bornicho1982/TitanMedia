@@ -157,36 +157,35 @@ Napi::Value GetSceneSources(const Napi::CallbackInfo& info) {
     return data.array;
 }
 
-void AddSourceToScene(const Napi::CallbackInfo& info, const char* source_id, const char* source_name) {
+Napi::Value AddSource(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
-    if (info.Length() < 1) throw Napi::Error::New(env, "Scene name is required.");
+    if (info.Length() < 3) {
+        throw Napi::Error::New(env, "Requires 3 arguments: sceneName, sourceId, sourceName");
+    }
+
     std::string scene_name = info[0].As<Napi::String>();
+    std::string source_id = info[1].As<Napi::String>();
+    std::string source_name = info[2].As<Napi::String>();
 
     obs_source_t* scene_source = obs_get_source_by_name(scene_name.c_str());
-    if (!scene_source) throw Napi::Error::New(env, "Scene not found.");
+    if (!scene_source) {
+        throw Napi::Error::New(env, "Scene not found: " + scene_name);
+    }
 
     obs_scene_t* scene = obs_scene_from_source(scene_source);
-    obs_source_t* new_source = obs_source_create(source_id, source_name, nullptr, nullptr);
+    obs_source_t* new_source = obs_source_create(source_id.c_str(), source_name.c_str(), nullptr, nullptr);
+
     if (!new_source) {
         obs_source_release(scene_source);
-        throw Napi::Error::New(env, std::string("Failed to create source: ") + source_id);
+        throw Napi::Error::New(env, "Failed to create source with id: " + source_id);
     }
 
     obs_scene_add(scene, new_source);
 
     obs_source_release(new_source);
     obs_source_release(scene_source);
-}
 
-Napi::Value AddVideoCaptureSource(const Napi::CallbackInfo& info) {
-    #if defined(_WIN32)
-        AddSourceToScene(info, "dshow_input", "Webcam");
-    #elif defined(__APPLE__)
-        AddSourceToScene(info, "av_capture_input", "Webcam");
-    #else
-        AddSourceToScene(info, "v4l2_input", "Webcam");
-    #endif
-    return info.Env().Undefined();
+    return env.Undefined();
 }
 
 // --- Module Initialization ---
@@ -198,7 +197,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("setCurrentScene", Napi::Function::New(env, SetCurrentScene));
   exports.Set("getSceneList", Napi::Function::New(env, GetSceneList));
   exports.Set("getSceneSources", Napi::Function::New(env, GetSceneSources));
-  exports.Set("addVideoCapture", Napi::Function::New(env, AddVideoCaptureSource));
+  exports.Set("addSource", Napi::Function::New(env, AddSource));
 
   return exports;
 }
