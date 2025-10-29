@@ -22,7 +22,12 @@ contextBridge.exposeInMainWorld('core', {
   addSource: (sceneName, sourceId, sourceName) => core.addSource(sceneName, sourceId, sourceName),
   removeSource: (sceneName, sourceName) => core.removeSource(sceneName, sourceName),
   getSourceProperties: (sourceName) => core.getSourceProperties(sourceName),
-  updateSourceProperties: (sourceName, properties) => core.updateSourceProperties(sourceName, properties)
+  updateSourceProperties: (sourceName, properties) => core.updateSourceProperties(sourceName, properties),
+
+  // Audio Management
+  setSourceMuted: (sourceName, muted) => core.setSourceMuted(sourceName, muted),
+  isSourceMuted: (sourceName) => core.isSourceMuted(sourceName),
+  getAudioLevels: () => core.getAudioLevels()
 });
 
 contextBridge.exposeInMainWorld('platform', {

@@ -11,6 +11,7 @@ const propertiesTitle = document.getElementById('properties-title');
 const propertiesFormContainer = document.getElementById('properties-form-container');
 const propertiesCancelButton = document.getElementById('properties-cancel-button');
 const propertiesSaveButton = document.getElementById('properties-save-button');
+const audioMixerList = document.getElementById('audio-mixer-list');
 
 
 let animationFrameId;
@@ -60,6 +61,47 @@ async function updateSourceList(sceneName) {
         li.addEventListener('dblclick', () => openPropertiesModal(source.name));
         sourceList.appendChild(li);
     });
+
+    updateAudioMixer(sceneName); // Update mixer when sources change
+}
+
+async function updateAudioMixer(sceneName) {
+    audioMixerList.innerHTML = ''; // Clear old controls
+    if (!sceneName) return;
+
+    const sources = await window.core.getSceneSources(sceneName);
+    const audioSources = sources.filter(s => s.hasAudio);
+
+    for (const source of audioSources) {
+        const isMuted = await window.core.isSourceMuted(source.name);
+
+        const mixerItem = document.createElement('div');
+        mixerItem.className = 'p-2 bg-gray-700 rounded';
+
+        const nameLabel = document.createElement('div');
+        nameLabel.textContent = source.name;
+        nameLabel.className = 'text-sm font-bold mb-2';
+
+        // Volume meter will be implemented in the next step
+        const volMeter = document.createElement('div');
+        volMeter.className = 'w-full bg-gray-600 rounded h-4 border border-gray-800';
+        volMeter.innerHTML = `<div id="volmeter-${source.name}" class="bg-green-500 h-full" style="width: 0%;"></div>`;
+
+        const muteButton = document.createElement('button');
+        muteButton.textContent = isMuted ? 'Unmute' : 'Mute';
+        muteButton.className = `mt-2 px-2 py-1 text-xs rounded ${isMuted ? 'bg-red-600' : 'bg-gray-600'}`;
+
+        muteButton.addEventListener('click', async () => {
+            const currentlyMuted = await window.core.isSourceMuted(source.name);
+            await window.core.setSourceMuted(source.name, !currentlyMuted);
+            updateAudioMixer(activeScene); // Refresh mixer to show new state
+        });
+
+        mixerItem.appendChild(nameLabel);
+        mixerItem.appendChild(volMeter);
+        mixerItem.appendChild(muteButton);
+        audioMixerList.appendChild(mixerItem);
+    }
 }
 
 function setSelectedSource(name) {
@@ -75,7 +117,7 @@ async function setActiveScene(name) {
         await window.core.setCurrentScene(name);
         activeScene = name;
         console.log(`Set active scene to: ${name}`);
-        await Promise.all([updateSceneList(), updateSourceList(name)]);
+        await Promise.all([updateSceneList(), updateSourceList(name)]); // updateSourceList will call updateAudioMixer
     } catch (error) {
         console.error(`Failed to set active scene: ${name}`, error);
     }
@@ -270,8 +312,19 @@ propertiesSaveButton.addEventListener('click', async () => {
 
 // --- Render Loop & Main Execution ---
 
+// Helper to convert dB to a percentage for the volume meter
+function dbToPercent(db) {
+    const minDb = -60.0;
+    const maxDb = 0.0;
+    if (db < minDb) db = minDb;
+    if (db > maxDb) db = maxDb;
+    return 100 * (db - minDb) / (maxDb - minDb);
+}
+
 function renderLoop() {
     animationFrameId = requestAnimationFrame(renderLoop);
+
+    // Update video preview
     window.core.getLatestFrame().then(frame => {
         if (frame && frame.data) {
             if (canvas.width !== frame.width || canvas.height !== frame.height) {
@@ -280,6 +333,17 @@ function renderLoop() {
             }
             const imageData = new ImageData(new Uint8ClampedArray(frame.data), frame.width, frame.height);
             ctx.putImageData(imageData, 0, 0);
+        }
+    });
+
+    // Update audio meters
+    window.core.getAudioLevels().then(levels => {
+        for (const sourceName in levels) {
+            const volMeter = document.getElementById(`volmeter-${sourceName}`);
+            if (volMeter) {
+                const percent = dbToPercent(levels[sourceName]);
+                volMeter.style.width = `${percent}%`;
+            }
         }
     });
 }

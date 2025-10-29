@@ -13,8 +13,8 @@
             <canvas id="video-preview" class="border border-gray-700 w-full h-full"></canvas>
         </main>
 
-        <!-- Footer Panels: Scenes & Sources -->
-        <footer class="grid grid-cols-2 gap-4 p-4 bg-gray-900 border-t border-gray-700" style="height: 250px;">
+        <!-- Footer Panels: Scenes, Sources, and Mixer -->
+        <footer class="grid grid-cols-3 gap-4 p-4 bg-gray-900 border-t border-gray-700" style="height: 250px;">
             <!-- Scenes Panel -->
             <div class="flex flex-col bg-gray-800 rounded-lg border border-gray-700">
                 <div class="flex items-center justify-between p-2 border-b border-gray-700">
@@ -50,6 +50,16 @@
                         <li><button data-source-id="audio_input_capture" class="w-full text-left px-2 py-1 rounded hover:bg-gray-600">Entrada de Audio (Mic)</button></li>
                         <li><button data-source-id="audio_output_capture" class="w-full text-left px-2 py-1 rounded hover:bg-gray-600">Salida de Audio (Escritorio)</button></li>
                     </ul>
+                </div>
+            </div>
+
+            <!-- Audio Mixer Panel -->
+            <div class="flex flex-col bg-gray-800 rounded-lg border border-gray-700">
+                <div class="flex items-center justify-between p-2 border-b border-gray-700">
+                    <h2 class="font-bold">Mezclador de Audio</h2>
+                </div>
+                <div id="audio-mixer-list" class="flex-grow p-2 overflow-y-auto space-y-4">
+                    <!-- Audio controls will be populated by JavaScript -->
                 </div>
             </div>
         </footer>
