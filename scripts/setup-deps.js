@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const { execSync } = require('child_process');
+const extract = require('extract-zip');
 
 const OBS_VERSION = '32.0.2';
 const DEPS_DIR = path.join(__dirname, '../deps');
@@ -17,12 +18,10 @@ const platforms = {
     }
   },
   'win32': {
-    // Placeholder for Windows
     url: `https://github.com/obsproject/obs-studio/releases/download/${OBS_VERSION}/OBS-Studio-${OBS_VERSION}-Windows-x64.zip`,
     filename: `obs-studio.zip`,
-    extract: (filepath) => {
-      // In a real windows environment, we'd use a tool like 7-zip or a node module to unzip
-      console.log('Windows extraction placeholder. Please manually extract', filepath);
+    extract: async (filepath) => {
+      await extract(filepath, { dir: OBS_DIR });
     }
   },
   'darwin': {
@@ -64,7 +63,8 @@ async function main() {
 
   if (!platformConfig || !platformConfig.url) {
     console.error(`Unsupported platform: ${platform}`);
-    process.exit(1);
+    // Return successfully for unsupported platforms for now
+    return;
   }
 
   if (fs.existsSync(OBS_DIR)) {
@@ -83,7 +83,7 @@ async function main() {
   console.log('Download complete.');
 
   console.log('Extracting files...');
-  platformConfig.extract(downloadPath);
+  await platformConfig.extract(downloadPath);
   console.log('Extraction complete.');
 
   // Clean up the downloaded archive

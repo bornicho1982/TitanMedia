@@ -2,6 +2,9 @@
 #include <obs.h>
 #include <iostream>
 
+// Global weak reference to the main scene
+static obs_weak_source_t *main_scene_weak = nullptr;
+
 // "Hello World" function for initial testing
 Napi::String HelloMethod(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
@@ -28,16 +31,69 @@ Napi::Value StartupOBS(const Napi::CallbackInfo& info) {
 Napi::Value ShutdownOBS(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     std::cout << "Attempting OBS shutdown..." << std::endl;
+
+    // Release the weak reference if it exists
+    if (main_scene_weak) {
+        obs_weak_source_release(main_scene_weak);
+        main_scene_weak = nullptr;
+    }
+
     obs_shutdown();
     std::cout << "OBS shutdown successful!" << std::endl;
     return env.Undefined();
 }
+
+// Function to create a scene and add a game capture source
+Napi::Value CreateSceneWithGameCapture(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    std::cout << "Creating scene with game capture..." << std::endl;
+
+    // Create the main scene
+    obs_scene_t *scene = obs_scene_create("MainScene");
+    if (!scene) {
+        throw Napi::Error::New(env, "Failed to create main scene.");
+    }
+    obs_source_t *main_scene_source = obs_scene_get_source(scene);
+
+
+    // Create the game capture source
+    obs_data_t *settings = obs_data_create();
+    obs_source_t *game_capture_source = obs_source_create("game_capture", "Game Capture", settings, nullptr);
+    obs_data_release(settings);
+
+    if (!game_capture_source) {
+        obs_scene_release(scene);
+        throw Napi::Error::New(env, "Failed to create game capture source.");
+    }
+
+    // Add the source to the scene
+    obs_scene_add(scene, game_capture_source);
+
+    // Set the main scene as the primary output source
+    obs_set_output_source(0, main_scene_source);
+
+    // Store a weak reference to the scene
+    if (main_scene_weak) {
+        obs_weak_source_release(main_scene_weak);
+    }
+    main_scene_weak = obs_source_get_weak_source(main_scene_source);
+
+    // Release strong references
+    obs_source_release(game_capture_source);
+    obs_scene_release(scene);
+
+    std::cout << "Scene created and game capture source added." << std::endl;
+    return env.Undefined();
+}
+
 
 // Module initialization
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("hello", Napi::Function::New(env, HelloMethod));
   exports.Set("startup", Napi::Function::New(env, StartupOBS));
   exports.Set("shutdown", Napi::Function::New(env, ShutdownOBS));
+  exports.Set("createScene", Napi::Function::New(env, CreateSceneWithGameCapture));
   return exports;
 }
 
