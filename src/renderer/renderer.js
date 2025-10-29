@@ -18,6 +18,15 @@ document.getElementById('startup-button').addEventListener('click', async () => 
     }
 });
 
+document.getElementById('create-scene-button').addEventListener('click', async () => {
+    try {
+        await window.core.createScene();
+        statusDiv.textContent = 'SUCCESS: Scene created and game capture source added.';
+    } catch (error) {
+        statusDiv.textContent = `ERROR: ${error.message}`;
+    }
+});
+
 document.getElementById('shutdown-button').addEventListener('click', async () => {
     try {
         await window.core.shutdown();

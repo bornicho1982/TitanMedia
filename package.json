@@ -29,6 +29,7 @@
     "electron": "^39.0.0"
   },
   "dependencies": {
+    "extract-zip": "^2.0.1",
     "node-addon-api": "^8.5.0"
   }
 }
