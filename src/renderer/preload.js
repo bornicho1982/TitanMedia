@@ -5,8 +5,18 @@ const addonPath = path.join(__dirname, '../../build/Release/titan_media_core');
 const core = require(addonPath);
 
 contextBridge.exposeInMainWorld('core', {
+  // Core lifecycle
   startup: () => core.startup(),
   shutdown: () => core.shutdown(),
-  createScene: () => core.createScene(),
-  getLatestFrame: () => core.getLatestFrame()
+
+  // Video Rendering
+  getLatestFrame: () => core.getLatestFrame(),
+
+  // Scene Management
+  createScene: (name) => core.createScene(name),
+  setCurrentScene: (name) => core.setCurrentScene(name),
+  getSceneList: () => core.getSceneList(),
+
+  // Source Management (example)
+  addVideoCapture: (sceneName) => core.addVideoCapture(sceneName)
 });

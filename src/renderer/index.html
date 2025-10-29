@@ -5,15 +5,46 @@
     <title>TitanMedia</title>
     <link href="./output.css" rel="stylesheet">
 </head>
-<body class="bg-gray-900 text-white">
+<body class="bg-gray-800 text-gray-200 font-sans">
+
     <div class="flex flex-col h-screen">
-        <header class="bg-gray-800 text-center py-2">
-            <h1 class="text-xl font-bold">TitanMedia Preview</h1>
-        </header>
-        <main class="flex-grow p-4 flex items-center justify-center">
-            <canvas id="video-preview" class="border border-gray-700"></canvas>
+        <!-- Main Content: Preview -->
+        <main class="flex-grow p-4 flex items-center justify-center bg-black">
+            <canvas id="video-preview" class="border border-gray-700 w-full h-full"></canvas>
         </main>
+
+        <!-- Footer Panels: Scenes & Sources -->
+        <footer class="grid grid-cols-2 gap-4 p-4 bg-gray-900 border-t border-gray-700" style="height: 250px;">
+            <!-- Scenes Panel -->
+            <div class="flex flex-col bg-gray-800 rounded-lg border border-gray-700">
+                <div class="flex items-center justify-between p-2 border-b border-gray-700">
+                    <h2 class="font-bold">Escenas</h2>
+                    <div>
+                        <button id="add-scene-button" class="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600">+</button>
+                        <button id="remove-scene-button" class="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600">-</button>
+                    </div>
+                </div>
+                <ul id="scene-list" class="flex-grow p-2 overflow-y-auto">
+                    <!-- Scene items will be populated by JavaScript -->
+                </ul>
+            </div>
+
+            <!-- Sources Panel -->
+            <div class="flex flex-col bg-gray-800 rounded-lg border border-gray-700">
+                <div class="flex items-center justify-between p-2 border-b border-gray-700">
+                    <h2 class="font-bold">Fuentes</h2>
+                    <div>
+                        <button id="add-source-button" class="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600">+</button>
+                        <button id="remove-source-button" class="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600">-</button>
+                    </div>
+                </div>
+                <ul id="source-list" class="flex-grow p-2 overflow-y-auto">
+                    <!-- Source items will be populated by JavaScript -->
+                </ul>
+            </div>
+        </footer>
     </div>
+
     <script src="./renderer.js"></script>
 </body>
 </html>
