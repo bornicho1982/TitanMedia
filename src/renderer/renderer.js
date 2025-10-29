@@ -36,6 +36,24 @@ document.getElementById('add-video-capture-button').addEventListener('click', as
     }
 });
 
+document.getElementById('add-mic-button').addEventListener('click', async () => {
+    try {
+        await window.core.addMicSource();
+        statusDiv.textContent = 'SUCCESS: Mic source added.';
+    } catch (error) {
+        statusDiv.textContent = `ERROR: ${error.message}`;
+    }
+});
+
+document.getElementById('add-desktop-audio-button').addEventListener('click', async () => {
+    try {
+        await window.core.addDesktopAudioSource();
+        statusDiv.textContent = 'SUCCESS: Desktop audio source added.';
+    } catch (error) {
+        statusDiv.textContent = `ERROR: ${error.message}`;
+    }
+});
+
 document.getElementById('add-browser-source-button').addEventListener('click', async () => {
     try {
         const url = document.getElementById('browser-url').value;

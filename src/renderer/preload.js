@@ -12,5 +12,7 @@ contextBridge.exposeInMainWorld('core', {
   shutdown: () => core.shutdown(),
   createScene: () => core.createScene(),
   addVideoCapture: () => core.addVideoCapture(),
-  addBrowserSource: (url, width, height) => core.addBrowserSource(url, width, height)
+  addBrowserSource: (url, width, height) => core.addBrowserSource(url, width, height),
+  addMicSource: () => core.addMicSource(),
+  addDesktopAudioSource: () => core.addDesktopAudioSource()
 });
