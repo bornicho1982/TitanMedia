@@ -14,8 +14,12 @@ contextBridge.exposeInMainWorld('core', {
 
   // Scene Management
   createScene: (name) => core.createScene(name),
-  setCurrentScene: (name) => core.setCurrentScene(name),
   getSceneList: () => core.getSceneList(),
+
+  // Studio Mode
+  setPreviewScene: (sceneName) => core.setPreviewScene(sceneName),
+  executeTransition: () => core.executeTransition(),
+  getProgramSceneName: () => core.getProgramSceneName(),
   getSceneSources: (sceneName) => core.getSceneSources(sceneName),
 
   // Source Management

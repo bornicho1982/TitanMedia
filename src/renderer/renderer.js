@@ -1,5 +1,7 @@
-const canvas = document.getElementById('video-preview');
-const ctx = canvas.getContext('2d');
+const previewCanvas = document.getElementById('preview-canvas');
+const programCanvas = document.getElementById('program-canvas');
+const previewCtx = previewCanvas.getContext('2d');
+const programCtx = programCanvas.getContext('2d');
 const sceneList = document.getElementById('scene-list');
 const sourceList = document.getElementById('source-list');
 const addSceneButton = document.getElementById('add-scene-button');
@@ -22,23 +24,31 @@ const rtmpServerInput = document.getElementById('rtmp-server');
 const streamKeyInput = document.getElementById('stream-key');
 
 let animationFrameId;
-let activeScene = '';
+let previewScene = '';
+let programScene = '';
 let selectedSource = '';
 let streamSettings = { server: '', key: '' };
+const transitionButton = document.getElementById('transition-button');
 
 // --- UI Update Functions ---
 
 async function updateSceneList() {
     const scenes = await window.core.getSceneList();
+    programScene = await window.core.getProgramSceneName();
+
     sceneList.innerHTML = ''; // Clear list
     scenes.forEach(name => {
         const li = document.createElement('li');
         li.textContent = name;
         li.className = 'p-2 rounded cursor-pointer hover:bg-gray-700';
-        if (name === activeScene) {
-            li.classList.add('bg-blue-600');
+
+        if (name === programScene) {
+            li.classList.add('bg-red-600'); // Program scene
+        } else if (name === previewScene) {
+            li.classList.add('bg-green-600'); // Preview scene
         }
-        li.addEventListener('click', () => setActiveScene(name));
+
+        li.addEventListener('click', () => setAsPreviewScene(name));
         sceneList.appendChild(li);
     });
 }
@@ -46,13 +56,12 @@ async function updateSceneList() {
 async function updateSourceList(sceneName) {
     if (!sceneName) {
         sourceList.innerHTML = '';
-        selectedSource = ''; // Clear selection when scene changes
+        selectedSource = '';
         return;
     }
     const sources = await window.core.getSceneSources(sceneName);
-    sourceList.innerHTML = ''; // Clear list
+    sourceList.innerHTML = '';
 
-    // Check if the selected source still exists
     const selectedSourceExists = sources.some(s => s.name === selectedSource);
     if (!selectedSourceExists) {
         selectedSource = '';
@@ -70,7 +79,7 @@ async function updateSourceList(sceneName) {
         sourceList.appendChild(li);
     });
 
-    updateAudioMixer(sceneName); // Update mixer when sources change
+    updateAudioMixer(sceneName);
 }
 
 async function updateAudioMixer(sceneName) {
@@ -119,17 +128,27 @@ function setSelectedSource(name) {
 
 // --- Event Handlers & Logic ---
 
-async function setActiveScene(name) {
-    if (name === activeScene) return;
+async function setAsPreviewScene(name) {
+    if (name === previewScene || name === programScene) return;
     try {
-        await window.core.setCurrentScene(name);
-        activeScene = name;
-        console.log(`Set active scene to: ${name}`);
-        await Promise.all([updateSceneList(), updateSourceList(name)]); // updateSourceList will call updateAudioMixer
+        await window.core.setPreviewScene(name);
+        previewScene = name;
+        console.log(`Set preview scene to: ${name}`);
+        await updateSceneList();
+        await updateSourceList(name);
     } catch (error) {
-        console.error(`Failed to set active scene: ${name}`, error);
+        console.error(`Failed to set preview scene: ${name}`, error);
     }
 }
+
+transitionButton.addEventListener('click', async () => {
+    await window.core.executeTransition();
+    previewScene = '';
+    await updateSceneList();
+    // Update source list to reflect the new empty preview scene
+    await updateSourceList(null);
+});
+
 
 addSceneButton.addEventListener('click', async () => {
     const sceneName = `Scene ${sceneList.children.length + 1}`;
@@ -137,8 +156,9 @@ addSceneButton.addEventListener('click', async () => {
         await window.core.createScene(sceneName);
         console.log(`Created scene: ${sceneName}`);
         await updateSceneList();
-        if (!activeScene) {
-            await setActiveScene(sceneName);
+        // If there's no preview scene, set the new one as preview
+        if (!previewScene && sceneName !== programScene) {
+            await setAsPreviewScene(sceneName);
         }
     } catch (error) {
         console.error(`Failed to create scene: ${sceneName}`, error);
@@ -146,15 +166,15 @@ addSceneButton.addEventListener('click', async () => {
 });
 
 removeSourceButton.addEventListener('click', async () => {
-    if (!activeScene || !selectedSource) {
-        alert("Please select a source to remove.");
+    if (!previewScene || !selectedSource) {
+        alert("Please select a source to remove from the preview scene.");
         return;
     }
     try {
-        await window.core.removeSource(activeScene, selectedSource);
-        console.log(`Removed source '${selectedSource}' from scene '${activeScene}'`);
+        await window.core.removeSource(previewScene, selectedSource);
+        console.log(`Removed source '${selectedSource}' from scene '${previewScene}'`);
         selectedSource = ''; // Clear selection
-        await updateSourceList(activeScene);
+        await updateSourceList(previewScene);
     } catch (error) {
         console.error(`Failed to remove source:`, error);
         alert(`Error removing source: ${error.message}`);
@@ -320,31 +340,40 @@ propertiesSaveButton.addEventListener('click', async () => {
 
 // --- Render Loop & Main Execution ---
 
-// Helper to convert dB to a percentage for the volume meter
 function dbToPercent(db) {
     const minDb = -60.0;
-    const maxDb = 0.0;
     if (db < minDb) db = minDb;
-    if (db > maxDb) db = maxDb;
-    return 100 * (db - minDb) / (maxDb - minDb);
+    if (db > 0.0) db = 0.0;
+    return 100 * (1 - (db / minDb));
 }
 
 function renderLoop() {
     animationFrameId = requestAnimationFrame(renderLoop);
 
-    // Update video preview
-    window.core.getLatestFrame().then(frame => {
-        if (frame && frame.data) {
-            if (canvas.width !== frame.width || canvas.height !== frame.height) {
-                canvas.width = frame.width;
-                canvas.height = frame.height;
+    window.core.getLatestFrame().then(frames => {
+        if (!frames) return;
+
+        if (frames.programFrame) {
+             if (programCanvas.width !== frames.width || programCanvas.height !== frames.height) {
+                programCanvas.width = frames.width;
+                programCanvas.height = frames.height;
             }
-            const imageData = new ImageData(new Uint8ClampedArray(frame.data), frame.width, frame.height);
-            ctx.putImageData(imageData, 0, 0);
+            const imageData = new ImageData(new Uint8ClampedArray(frames.programFrame), frames.width, frames.height);
+            programCtx.putImageData(imageData, 0, 0);
+        }
+
+        if (frames.previewFrame) {
+            if (previewCanvas.width !== frames.width || previewCanvas.height !== frames.height) {
+                previewCanvas.width = frames.width;
+                previewCanvas.height = frames.height;
+            }
+            const imageData = new ImageData(new Uint8ClampedArray(frames.previewFrame), frames.width, frames.height);
+            previewCtx.putImageData(imageData, 0, 0);
+        } else {
+            previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
         }
     });
 
-    // Update audio meters
     window.core.getAudioLevels().then(levels => {
         for (const sourceName in levels) {
             const volMeter = document.getElementById(`volmeter-${sourceName}`);
@@ -364,11 +393,14 @@ async function main() {
 
         await updateSceneList();
         const scenes = await window.core.getSceneList();
-        if (scenes.length > 0) {
-            await setActiveScene(scenes[0]);
+        if (scenes.length > 1) {
+            await setAsPreviewScene(scenes[1]);
+        } else if (scenes.length > 0) {
+            // If only one scene, it's already program, nothing to preview
         }
 
         renderLoop();
+        setInterval(updateSceneList, 1000); // Periodically update scene highlights
     } catch (error) {
         console.error("Failed to initialize application:", error);
     }
