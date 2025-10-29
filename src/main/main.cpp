@@ -1,16 +1,38 @@
 #include <napi.h>
 #include <obs.h>
+#include <obs-audio-controls.h>
 #include <iostream>
 #include <vector>
 #include <mutex>
 #include <string>
+#include <map>
 
-// --- Global variables for video frame data ---
+// --- Global variables & state ---
 static std::vector<uint8_t> latest_frame_data;
 static uint32_t frame_width = 0;
 static uint32_t frame_height = 0;
 static std::mutex frame_mutex;
 static bool obs_is_running = false;
+struct VolmeterData {
+    obs_volmeter_t* volmeter;
+    std::string* name_ptr;
+};
+static std::map<std::string, VolmeterData> g_volmeters;
+static std::map<std::string, float> g_peak_levels;
+static std::mutex g_audio_mutex;
+
+// --- OBS Audio Callback ---
+void volmeter_callback(void *param, const float magnitude[MAX_AUDIO_CHANNELS],
+                       const float peak[MAX_AUDIO_CHANNELS],
+                       const float input_peak[MAX_AUDIO_CHANNELS]) {
+    std::string* name = static_cast<std::string*>(param);
+
+    // We only care about the peak value of the first channel for simplicity
+    float peak_db = obs_mul_to_db(peak[0]);
+
+    std::lock_guard<std::mutex> lock(g_audio_mutex);
+    g_peak_levels[*name] = peak_db;
+}
 
 // --- OBS Render Callback ---
 void main_render_callback(void *param, uint32_t cx, uint32_t cy) {
@@ -135,6 +157,11 @@ bool enum_scene_sources_callback(obs_scene_t *scene, obs_sceneitem_t *item, void
         const char *name = obs_source_get_name(source);
         Napi::Object source_info = Napi::Object::New(data->env);
         source_info.Set("name", Napi::String::New(data->env, name));
+
+        uint32_t flags = obs_source_get_output_flags(source);
+        bool has_audio = (flags & OBS_SOURCE_AUDIO) != 0;
+        source_info.Set("hasAudio", Napi::Boolean::New(data->env, has_audio));
+
         data->array[data->array.Length()] = source_info;
     }
     return true;
@@ -182,6 +209,24 @@ Napi::Value AddSource(const Napi::CallbackInfo& info) {
 
     obs_scene_add(scene, new_source);
 
+    // --- Volmeter Management ---
+    uint32_t flags = obs_source_get_output_flags(new_source);
+    if ((flags & OBS_SOURCE_AUDIO) != 0) {
+        std::lock_guard<std::mutex> lock(g_audio_mutex);
+        obs_volmeter_t* volmeter = obs_volmeter_create(OBS_FADER_LOG);
+        std::string* name_ptr = new std::string(source_name);
+
+        obs_volmeter_add_callback(volmeter, volmeter_callback, name_ptr);
+
+        if (obs_volmeter_attach_source(volmeter, new_source)) {
+            g_volmeters[source_name] = {volmeter, name_ptr};
+        } else {
+            obs_volmeter_destroy(volmeter);
+            delete name_ptr;
+        }
+    }
+    // --- End Volmeter Management ---
+
     obs_source_release(new_source);
     obs_source_release(scene_source);
 
@@ -190,33 +235,81 @@ Napi::Value AddSource(const Napi::CallbackInfo& info) {
 
 Napi::Value RemoveSource(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
-    if (info.Length() < 2) {
-        throw Napi::Error::New(env, "Requires 2 arguments: sceneName, sourceName");
-    }
+    if (info.Length() < 2) throw Napi::Error::New(env, "Requires 2 arguments: sceneName, sourceName");
 
     std::string scene_name = info[0].As<Napi::String>();
     std::string source_name = info[1].As<Napi::String>();
 
     obs_source_t* scene_source = obs_get_source_by_name(scene_name.c_str());
-    if (!scene_source) {
-        throw Napi::Error::New(env, "Scene not found: " + scene_name);
-    }
+    if (!scene_source) throw Napi::Error::New(env, "Scene not found: " + scene_name);
 
     obs_scene_t* scene = obs_scene_from_source(scene_source);
-
-    // Find the scene item by the source's name. This returns a new reference.
     obs_sceneitem_t* scene_item = obs_scene_find_source_recursive(scene, source_name.c_str());
 
     if (scene_item) {
-        // Remove the item from the scene
         obs_sceneitem_remove(scene_item);
-        // Release the reference we obtained from the find function
         obs_sceneitem_release(scene_item);
     }
+
+    // --- Volmeter Management ---
+    {
+        std::lock_guard<std::mutex> lock(g_audio_mutex);
+        auto it = g_volmeters.find(source_name);
+        if (it != g_volmeters.end()) {
+            obs_volmeter_destroy(it->second.volmeter);
+            delete it->second.name_ptr;
+            g_volmeters.erase(it);
+            g_peak_levels.erase(source_name);
+        }
+    }
+    // --- End Volmeter Management ---
 
     obs_source_release(scene_source);
     return env.Undefined();
 }
+
+Napi::Value SetSourceMuted(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 2) throw Napi::Error::New(env, "Requires 2 arguments: sourceName, muted");
+
+    std::string source_name = info[0].As<Napi::String>();
+    bool muted = info[1].As<Napi::Boolean>();
+
+    obs_source_t* source = obs_get_source_by_name(source_name.c_str());
+    if (source) {
+        obs_source_set_muted(source, muted);
+        obs_source_release(source);
+    }
+    return env.Undefined();
+}
+
+Napi::Value IsSourceMuted(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 1) throw Napi::Error::New(env, "Requires 1 argument: sourceName");
+
+    std::string source_name = info[0].As<Napi::String>();
+    bool muted = false;
+
+    obs_source_t* source = obs_get_source_by_name(source_name.c_str());
+    if (source) {
+        muted = obs_source_muted(source);
+        obs_source_release(source);
+    }
+    return Napi::Boolean::New(env, muted);
+}
+
+Napi::Value GetAudioLevels(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    Napi::Object levels = Napi::Object::New(env);
+    std::lock_guard<std::mutex> lock(g_audio_mutex);
+
+    for (auto const& [name, peak] : g_peak_levels) {
+        levels.Set(name, Napi::Number::New(env, peak));
+    }
+
+    return levels;
+}
+
 
 Napi::Value GetSourceProperties(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
@@ -324,6 +417,9 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("removeSource", Napi::Function::New(env, RemoveSource));
   exports.Set("getSourceProperties", Napi::Function::New(env, GetSourceProperties));
   exports.Set("updateSourceProperties", Napi::Function::New(env, UpdateSourceProperties));
+  exports.Set("setSourceMuted", Napi::Function::New(env, SetSourceMuted));
+  exports.Set("isSourceMuted", Napi::Function::New(env, IsSourceMuted));
+  exports.Set("getAudioLevels", Napi::Function::New(env, GetAudioLevels));
 
   return exports;
 }
