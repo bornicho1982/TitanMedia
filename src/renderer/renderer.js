@@ -36,6 +36,24 @@ document.getElementById('add-video-capture-button').addEventListener('click', as
     }
 });
 
+document.getElementById('add-browser-source-button').addEventListener('click', async () => {
+    try {
+        const url = document.getElementById('browser-url').value;
+        const width = parseInt(document.getElementById('browser-width').value, 10);
+        const height = parseInt(document.getElementById('browser-height').value, 10);
+
+        if (!url || !width || !height) {
+            statusDiv.textContent = 'ERROR: URL, width, and height are required for browser source.';
+            return;
+        }
+
+        await window.core.addBrowserSource(url, width, height);
+        statusDiv.textContent = 'SUCCESS: Browser source added.';
+    } catch (error) {
+        statusDiv.textContent = `ERROR: ${error.message}`;
+    }
+});
+
 document.getElementById('shutdown-button').addEventListener('click', async () => {
     try {
         await window.core.shutdown();
