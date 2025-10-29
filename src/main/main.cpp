@@ -184,6 +184,78 @@ Napi::Value AddBrowserSource(const Napi::CallbackInfo& info) {
     return env.Undefined();
 }
 
+// Function to add a microphone source
+Napi::Value AddMicSource(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (!main_scene_weak) {
+        throw Napi::Error::New(env, "Main scene does not exist.");
+    }
+    obs_source_t* main_scene_source = obs_weak_source_get_source(main_scene_weak);
+    if (!main_scene_source) {
+        throw Napi::Error::New(env, "Main scene reference is no longer valid.");
+    }
+    obs_scene_t *scene = obs_scene_from_source(main_scene_source);
+
+    #if defined(_WIN32)
+        const char* mic_id = "wasapi_input_capture";
+    #elif defined(__APPLE__)
+        const char* mic_id = "coreaudio_input_capture";
+    #else
+        const char* mic_id = "pulse_input_capture";
+    #endif
+
+    std::cout << "Adding Mic/Aux source (" << mic_id << ")..." << std::endl;
+    obs_source_t *mic_source = obs_source_create(mic_id, "Mic/Aux", nullptr, nullptr);
+    if (!mic_source) {
+        obs_source_release(main_scene_source);
+        throw Napi::Error::New(env, "Failed to create microphone source.");
+    }
+
+    obs_scene_add(scene, mic_source);
+    obs_source_release(mic_source);
+    obs_source_release(main_scene_source);
+
+    std::cout << "Mic/Aux source added." << std::endl;
+    return env.Undefined();
+}
+
+// Function to add desktop audio source
+Napi::Value AddDesktopAudioSource(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (!main_scene_weak) {
+        throw Napi::Error::New(env, "Main scene does not exist.");
+    }
+    obs_source_t* main_scene_source = obs_weak_source_get_source(main_scene_weak);
+    if (!main_scene_source) {
+        throw Napi::Error::New(env, "Main scene reference is no longer valid.");
+    }
+    obs_scene_t *scene = obs_scene_from_source(main_scene_source);
+
+    #if defined(_WIN32)
+        const char* desktop_audio_id = "wasapi_output_capture";
+    #elif defined(__APPLE__)
+        const char* desktop_audio_id = "coreaudio_output_capture";
+    #else
+        const char* desktop_audio_id = "pulse_output_capture";
+    #endif
+
+    std::cout << "Adding Desktop Audio source (" << desktop_audio_id << ")..." << std::endl;
+    obs_source_t *desktop_audio_source = obs_source_create(desktop_audio_id, "Desktop Audio", nullptr, nullptr);
+    if (!desktop_audio_source) {
+        obs_source_release(main_scene_source);
+        throw Napi::Error::New(env, "Failed to create desktop audio source.");
+    }
+
+    obs_scene_add(scene, desktop_audio_source);
+    obs_source_release(desktop_audio_source);
+    obs_source_release(main_scene_source);
+
+    std::cout << "Desktop Audio source added." << std::endl;
+    return env.Undefined();
+}
+
 // Module initialization
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("hello", Napi::Function::New(env, HelloMethod));
@@ -192,6 +264,8 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("createScene", Napi::Function::New(env, CreateSceneWithGameCapture));
   exports.Set("addVideoCapture", Napi::Function::New(env, AddVideoCaptureSource));
   exports.Set("addBrowserSource", Napi::Function::New(env, AddBrowserSource));
+  exports.Set("addMicSource", Napi::Function::New(env, AddMicSource));
+  exports.Set("addDesktopAudioSource", Napi::Function::New(env, AddDesktopAudioSource));
   return exports;
 }
 
