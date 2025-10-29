@@ -5,18 +5,21 @@
     <title>TitanMedia</title>
     <link href="./output.css" rel="stylesheet">
 </head>
-<body class="bg-gray-800 text-gray-200 font-sans">
+<body class="bg-gray-800 text-gray-200 font-sans h-screen flex flex-col">
 
-    <div class="flex flex-col h-screen">
-        <!-- Main Content: Preview -->
-        <main class="flex-grow p-4 flex items-center justify-center bg-black">
-            <canvas id="video-preview" class="border border-gray-700 w-full h-full"></canvas>
-        </main>
+    <div class="flex-grow grid grid-cols-4 grid-rows-1 gap-4 p-4">
 
-        <!-- Footer Panels: Scenes, Sources, and Mixer -->
-        <footer class="grid grid-cols-3 gap-4 p-4 bg-gray-900 border-t border-gray-700" style="height: 250px;">
-            <!-- Scenes Panel -->
-            <div class="flex flex-col bg-gray-800 rounded-lg border border-gray-700">
+        <!-- Main Content Area (3/4 width) -->
+        <div class="col-span-3 flex flex-col h-full">
+            <!-- Video Preview -->
+            <main class="flex-grow p-4 flex items-center justify-center bg-black rounded-lg">
+                <canvas id="video-preview" class="border border-gray-700 w-full h-full"></canvas>
+            </main>
+
+            <!-- Footer Panels: Scenes, Sources, and Mixer -->
+            <footer class="grid grid-cols-3 gap-4 p-4 bg-gray-900 border-t border-gray-700 rounded-b-lg" style="height: 250px;">
+                <!-- Scenes Panel -->
+                <div class="flex flex-col bg-gray-800 rounded-lg border border-gray-700">
                 <div class="flex items-center justify-between p-2 border-b border-gray-700">
                     <h2 class="font-bold">Escenas</h2>
                     <div>
@@ -63,6 +66,19 @@
                 </div>
             </div>
         </footer>
+        </div>
+
+        <!-- Controls Panel (1/4 width) -->
+        <aside class="col-span-1 flex flex-col bg-gray-900 rounded-lg border border-gray-700">
+            <div class="p-4">
+                <h2 class="font-bold text-lg mb-4">Controles</h2>
+                <div class="space-y-2">
+                    <button id="start-stream-button" class="w-full px-4 py-2 bg-blue-600 rounded hover:bg-blue-500">Iniciar Transmisión</button>
+                    <button id="start-record-button" class="w-full px-4 py-2 bg-gray-600 rounded hover:bg-gray-500">Iniciar Grabación</button>
+                    <button id="settings-button" class="w-full px-4 py-2 bg-gray-600 rounded hover:bg-gray-500 mt-4">Ajustes</button>
+                </div>
+            </div>
+        </aside>
     </div>
 
     <!-- Properties Modal -->
@@ -75,6 +91,27 @@
             <div class="flex justify-end space-x-4">
                 <button id="properties-cancel-button" class="px-4 py-2 bg-gray-600 rounded hover:bg-gray-500">Cancelar</button>
                 <button id="properties-save-button" class="px-4 py-2 bg-blue-600 rounded hover:bg-blue-500">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-20">
+        <div class="bg-gray-800 rounded-lg shadow-xl p-6 border border-gray-700 w-1/2 max-w-lg">
+            <h2 class="text-xl font-bold mb-4">Ajustes de Transmisión</h2>
+            <div class="space-y-4 mb-6">
+                <div>
+                    <label for="rtmp-server" class="block mb-1 text-sm font-medium">Servidor RTMP</label>
+                    <input type="text" id="rtmp-server" class="bg-gray-700 border border-gray-600 rounded w-full p-2" placeholder="rtmp://a.rtmp.youtube.com/live2">
+                </div>
+                <div>
+                    <label for="stream-key" class="block mb-1 text-sm font-medium">Clave de Transmisión</label>
+                    <input type="password" id="stream-key" class="bg-gray-700 border border-gray-600 rounded w-full p-2" placeholder="••••••••••••••••">
+                </div>
+            </div>
+            <div class="flex justify-end space-x-4">
+                <button id="settings-cancel-button" class="px-4 py-2 bg-gray-600 rounded hover:bg-gray-500">Cancelar</button>
+                <button id="settings-save-button" class="px-4 py-2 bg-blue-600 rounded hover:bg-blue-500">Guardar</button>
             </div>
         </div>
     </div>

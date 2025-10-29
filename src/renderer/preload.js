@@ -27,7 +27,15 @@ contextBridge.exposeInMainWorld('core', {
   // Audio Management
   setSourceMuted: (sourceName, muted) => core.setSourceMuted(sourceName, muted),
   isSourceMuted: (sourceName) => core.isSourceMuted(sourceName),
-  getAudioLevels: () => core.getAudioLevels()
+  getAudioLevels: () => core.getAudioLevels(),
+
+  // Output Management
+  startStreaming: (server, key) => core.startStreaming(server, key),
+  stopStreaming: () => core.stopStreaming(),
+  isStreaming: () => core.isStreaming(),
+  startRecording: () => core.startRecording(),
+  stopRecording: () => core.stopRecording(),
+  isRecording: () => core.isRecording()
 });
 
 contextBridge.exposeInMainWorld('platform', {

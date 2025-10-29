@@ -1,6 +1,8 @@
 #include <napi.h>
 #include <obs.h>
 #include <obs-audio-controls.h>
+#include "obs-encoder.h"
+#include "obs-output.h"
 #include <iostream>
 #include <vector>
 #include <mutex>
@@ -20,6 +22,13 @@ struct VolmeterData {
 static std::map<std::string, VolmeterData> g_volmeters;
 static std::map<std::string, float> g_peak_levels;
 static std::mutex g_audio_mutex;
+
+// --- Output Management ---
+static obs_output_t* g_stream_output = nullptr;
+static obs_output_t* g_record_output = nullptr;
+static obs_encoder_t* g_video_encoder = nullptr;
+static obs_encoder_t* g_audio_encoder = nullptr;
+
 
 // --- OBS Audio Callback ---
 void volmeter_callback(void *param, const float magnitude[MAX_AUDIO_CHANNELS],
@@ -403,6 +412,127 @@ Napi::Value UpdateSourceProperties(const Napi::CallbackInfo& info) {
     return env.Undefined();
 }
 
+// --- Output Functions ---
+
+void SetupEncoders() {
+    // For simplicity, using x264 for video and AAC for audio
+    g_video_encoder = obs_video_encoder_create("obs_x264", "simple_h264_stream", nullptr, nullptr);
+    // Note: fdk_aac might not be available on all builds, ffmpeg_aac is a safer default
+    g_audio_encoder = obs_audio_encoder_create("ffmpeg_aac", "simple_aac", nullptr, 0, nullptr);
+
+    // Video encoder settings
+    obs_data_t* video_settings = obs_data_create();
+    obs_data_set_int(video_settings, "bitrate", 2500);
+    obs_data_set_string(video_settings, "rate_control", "CBR");
+    obs_encoder_update(g_video_encoder, video_settings);
+    obs_data_release(video_settings);
+
+    // Audio encoder settings
+    obs_data_t* audio_settings = obs_data_create();
+    obs_data_set_int(audio_settings, "bitrate", 160);
+    obs_encoder_update(g_audio_encoder, audio_settings);
+    obs_data_release(audio_settings);
+}
+
+Napi::Value StartStreaming(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 2) throw Napi::Error::New(env, "Requires 2 arguments: server, key");
+
+    std::string server = info[0].As<Napi::String>();
+    std::string key = info[1].As<Napi::String>();
+
+    if (g_stream_output) return env.Undefined(); // Already streaming
+
+    SetupEncoders(); // Make sure encoders are ready
+
+    obs_data_t* settings = obs_data_create();
+    obs_data_set_string(settings, "server", server.c_str());
+    obs_data_set_string(settings, "key", key.c_str());
+
+    g_stream_output = obs_output_create("rtmp_output", "simple_rtmp_stream", settings, nullptr);
+    obs_data_release(settings);
+
+    if (!g_stream_output) throw Napi::Error::New(env, "Failed to create stream output.");
+
+    obs_encoder_set_video(g_video_encoder, obs_get_video());
+    obs_encoder_set_audio(g_audio_encoder, obs_get_audio());
+    obs_output_set_video_encoder(g_stream_output, g_video_encoder);
+    obs_output_set_audio_encoder(g_stream_output, g_audio_encoder, 0);
+
+    if (!obs_output_start(g_stream_output)) {
+        throw Napi::Error::New(env, "Failed to start stream output.");
+    }
+
+    return env.Undefined();
+}
+
+Napi::Value StopStreaming(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (g_stream_output) {
+        obs_output_stop(g_stream_output);
+        obs_output_release(g_stream_output);
+        obs_encoder_release(g_video_encoder);
+        obs_encoder_release(g_audio_encoder);
+        g_stream_output = nullptr;
+        g_video_encoder = nullptr;
+        g_audio_encoder = nullptr;
+    }
+    return env.Undefined();
+}
+
+Napi::Value IsStreaming(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    bool active = g_stream_output && obs_output_active(g_stream_output);
+    return Napi::Boolean::New(env, active);
+}
+
+Napi::Value StartRecording(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (g_record_output) return env.Undefined(); // Already recording
+
+    // Use separate encoders for recording if not already streaming
+    if (!g_video_encoder || !g_audio_encoder) {
+        SetupEncoders();
+    }
+
+    // For simplicity, hardcoding path. A real app would get this from settings.
+    g_record_output = obs_output_create("ffmpeg_muxer", "simple_ffmpeg_muxer", nullptr, nullptr);
+    if (!g_record_output) throw Napi::Error::New(env, "Failed to create record output.");
+
+    obs_output_set_video_encoder(g_record_output, g_video_encoder);
+    obs_output_set_audio_encoder(g_record_output, g_audio_encoder, 0);
+
+    if (!obs_output_start(g_record_output)) {
+        throw Napi::Error::New(env, "Failed to start record output.");
+    }
+
+    return env.Undefined();
+}
+
+Napi::Value StopRecording(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (g_record_output) {
+        obs_output_stop(g_record_output);
+        obs_output_release(g_record_output);
+        g_record_output = nullptr;
+
+        // If we are not streaming, release the encoders too
+        if (!g_stream_output) {
+            obs_encoder_release(g_video_encoder);
+            obs_encoder_release(g_audio_encoder);
+            g_video_encoder = nullptr;
+            g_audio_encoder = nullptr;
+        }
+    }
+    return env.Undefined();
+}
+
+Napi::Value IsRecording(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    bool active = g_record_output && obs_output_active(g_record_output);
+    return Napi::Boolean::New(env, active);
+}
+
 
 // --- Module Initialization ---
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
@@ -420,6 +550,14 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("setSourceMuted", Napi::Function::New(env, SetSourceMuted));
   exports.Set("isSourceMuted", Napi::Function::New(env, IsSourceMuted));
   exports.Set("getAudioLevels", Napi::Function::New(env, GetAudioLevels));
+
+  // Output Functions
+  exports.Set("startStreaming", Napi::Function::New(env, StartStreaming));
+  exports.Set("stopStreaming", Napi::Function::New(env, StopStreaming));
+  exports.Set("isStreaming", Napi::Function::New(env, IsStreaming));
+  exports.Set("startRecording", Napi::Function::New(env, StartRecording));
+  exports.Set("stopRecording", Napi::Function::New(env, StopRecording));
+  exports.Set("isRecording", Napi::Function::New(env, IsRecording));
 
   return exports;
 }
