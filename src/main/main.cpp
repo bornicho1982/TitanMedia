@@ -188,6 +188,129 @@ Napi::Value AddSource(const Napi::CallbackInfo& info) {
     return env.Undefined();
 }
 
+Napi::Value RemoveSource(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 2) {
+        throw Napi::Error::New(env, "Requires 2 arguments: sceneName, sourceName");
+    }
+
+    std::string scene_name = info[0].As<Napi::String>();
+    std::string source_name = info[1].As<Napi::String>();
+
+    obs_source_t* scene_source = obs_get_source_by_name(scene_name.c_str());
+    if (!scene_source) {
+        throw Napi::Error::New(env, "Scene not found: " + scene_name);
+    }
+
+    obs_scene_t* scene = obs_scene_from_source(scene_source);
+
+    // Find the scene item by the source's name. This returns a new reference.
+    obs_sceneitem_t* scene_item = obs_scene_find_source_recursive(scene, source_name.c_str());
+
+    if (scene_item) {
+        // Remove the item from the scene
+        obs_sceneitem_remove(scene_item);
+        // Release the reference we obtained from the find function
+        obs_sceneitem_release(scene_item);
+    }
+
+    obs_source_release(scene_source);
+    return env.Undefined();
+}
+
+Napi::Value GetSourceProperties(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 1) {
+        throw Napi::Error::New(env, "Requires 1 argument: sourceName");
+    }
+    std::string source_name = info[0].As<Napi::String>();
+
+    obs_source_t* source = obs_get_source_by_name(source_name.c_str());
+    if (!source) {
+        return env.Null(); // Return null if source not found
+    }
+
+    obs_properties_t* properties = obs_source_properties(source);
+    obs_source_release(source); // Release the source reference
+
+    if (!properties) {
+        return env.Null(); // No properties available
+    }
+
+    Napi::Array result = Napi::Array::New(env);
+    obs_property_t* prop = obs_properties_first(properties);
+
+    while (prop) {
+        Napi::Object prop_obj = Napi::Object::New(env);
+        prop_obj.Set("name", obs_property_name(prop));
+        prop_obj.Set("description", obs_property_description(prop));
+
+        obs_property_type type = obs_property_get_type(prop);
+        prop_obj.Set("type", (int)type);
+
+        if (type == OBS_PROPERTY_LIST) {
+            Napi::Array options = Napi::Array::New(env);
+            size_t count = obs_property_list_item_count(prop);
+            for (size_t i = 0; i < count; ++i) {
+                const char* name = obs_property_list_item_name(prop, i);
+                // Assuming string values for simplicity now
+                const char* val_str_const = obs_property_list_item_string(prop, i);
+                std::string val_str = val_str_const ? val_str_const : "";
+
+                Napi::Object option = Napi::Object::New(env);
+                option.Set("name", name);
+                option.Set("value", val_str);
+                options[i] = option;
+            }
+            prop_obj.Set("options", options);
+        }
+
+        result[result.Length()] = prop_obj;
+        obs_property_next(&prop);
+    }
+
+    obs_properties_destroy(properties);
+    return result;
+}
+
+Napi::Value UpdateSourceProperties(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 2) {
+        throw Napi::Error::New(env, "Requires 2 arguments: sourceName, propertiesObject");
+    }
+    std::string source_name = info[0].As<Napi::String>();
+    Napi::Object props_obj = info[1].As<Napi::Object>();
+
+    obs_source_t* source = obs_get_source_by_name(source_name.c_str());
+    if (!source) {
+        throw Napi::Error::New(env, "Source not found: " + source_name);
+    }
+
+    obs_data_t* settings = obs_data_create();
+    Napi::Array prop_names = props_obj.GetPropertyNames();
+    for (uint32_t i = 0; i < prop_names.Length(); ++i) {
+        Napi::Value key_val = prop_names.Get(i);
+        std::string key = key_val.As<Napi::String>();
+        Napi::Value val = props_obj.Get(key);
+
+        if (val.IsString()) {
+            obs_data_set_string(settings, key.c_str(), val.As<Napi::String>().Utf8Value().c_str());
+        } else if (val.IsBoolean()) {
+            obs_data_set_bool(settings, key.c_str(), val.As<Napi::Boolean>().Value());
+        } else if (val.IsNumber()) {
+            obs_data_set_int(settings, key.c_str(), val.As<Napi::Number>().Int64Value());
+        }
+    }
+
+    obs_source_update(source, settings);
+
+    obs_data_release(settings);
+    obs_source_release(source);
+
+    return env.Undefined();
+}
+
+
 // --- Module Initialization ---
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("startup", Napi::Function::New(env, StartupOBS));
@@ -198,6 +321,9 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("getSceneList", Napi::Function::New(env, GetSceneList));
   exports.Set("getSceneSources", Napi::Function::New(env, GetSceneSources));
   exports.Set("addSource", Napi::Function::New(env, AddSource));
+  exports.Set("removeSource", Napi::Function::New(env, RemoveSource));
+  exports.Set("getSourceProperties", Napi::Function::New(env, GetSourceProperties));
+  exports.Set("updateSourceProperties", Napi::Function::New(env, UpdateSourceProperties));
 
   return exports;
 }

@@ -55,6 +55,20 @@
         </footer>
     </div>
 
+    <!-- Properties Modal -->
+    <div id="properties-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-20">
+        <div class="bg-gray-800 rounded-lg shadow-xl p-6 border border-gray-700 w-1/2 max-w-lg">
+            <h2 id="properties-title" class="text-xl font-bold mb-4">Propiedades de: </h2>
+            <div id="properties-form-container" class="space-y-4 mb-6">
+                <!-- Dynamic form controls will be inserted here -->
+            </div>
+            <div class="flex justify-end space-x-4">
+                <button id="properties-cancel-button" class="px-4 py-2 bg-gray-600 rounded hover:bg-gray-500">Cancelar</button>
+                <button id="properties-save-button" class="px-4 py-2 bg-blue-600 rounded hover:bg-blue-500">Guardar</button>
+            </div>
+        </div>
+    </div>
+
     <script src="./renderer.js"></script>
 </body>
 </html>
