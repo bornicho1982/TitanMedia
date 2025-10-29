@@ -31,24 +31,24 @@
                 </div>
             </main>
 
-            <!-- Footer Panels: Scenes, Sources, and Mixer -->
-            <footer class="grid grid-cols-3 gap-4 p-4 bg-gray-900 border-t-2 border-gray-700 rounded-b-lg" style="height: 250px;">
+            <!-- Footer Panels: Scenes, Sources, Overlays, and Mixer -->
+            <footer class="grid grid-cols-4 gap-4 p-4 bg-gray-900 border-t-2 border-gray-700 rounded-b-lg" style="height: 250px;">
                 <!-- Scenes Panel -->
-                <div class="flex flex-col bg-gray-800 rounded-lg border border-gray-700">
-                <div class="flex items-center justify-between p-2 border-b border-gray-700">
-                    <h2 class="font-bold">Escenas</h2>
-                    <div>
-                        <button id="add-scene-button" class="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600">+</button>
-                        <button id="remove-scene-button" class="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600">-</button>
+                <div class="col-span-1 flex flex-col bg-gray-800 rounded-lg border border-gray-700">
+                    <div class="flex items-center justify-between p-2 border-b border-gray-700">
+                        <h2 class="font-bold">Escenas</h2>
+                        <div>
+                            <button id="add-scene-button" class="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600">+</button>
+                            <button id="remove-scene-button" class="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600">-</button>
+                        </div>
                     </div>
+                    <ul id="scene-list" class="flex-grow p-2 overflow-y-auto">
+                        <!-- Scene items will be populated by JavaScript -->
+                    </ul>
                 </div>
-                <ul id="scene-list" class="flex-grow p-2 overflow-y-auto">
-                    <!-- Scene items will be populated by JavaScript -->
-                </ul>
-            </div>
 
-            <!-- Sources Panel -->
-            <div class="relative flex flex-col bg-gray-800 rounded-lg border border-gray-700">
+                <!-- Sources Panel -->
+                <div class="col-span-1 relative flex flex-col bg-gray-800 rounded-lg border border-gray-700">
                 <div class="flex items-center justify-between p-2 border-b border-gray-700">
                     <h2 class="font-bold">Fuentes</h2>
                     <div>
@@ -71,8 +71,18 @@
                 </div>
             </div>
 
+            <!-- Overlays Panel -->
+                <div class="col-span-1 flex flex-col bg-gray-800 rounded-lg border border-gray-700">
+                <div class="flex items-center justify-between p-2 border-b border-gray-700">
+                    <h2 class="font-bold">Biblioteca de Overlays</h2>
+                </div>
+                <div id="overlay-gallery" class="flex-grow p-2 overflow-y-auto grid grid-cols-2 gap-2">
+                    <!-- Overlay templates will be populated here -->
+                </div>
+            </div>
+
             <!-- Audio Mixer Panel -->
-            <div class="flex flex-col bg-gray-800 rounded-lg border border-gray-700">
+                <div class="col-span-1 flex flex-col bg-gray-800 rounded-lg border border-gray-700">
                 <div class="flex items-center justify-between p-2 border-b border-gray-700">
                     <h2 class="font-bold">Mezclador de Audio</h2>
                 </div>

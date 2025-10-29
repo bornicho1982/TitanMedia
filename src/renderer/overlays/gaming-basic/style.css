@@ -1,0 +1,28 @@
+body {
+    background-color: transparent !important;
+    font-family: 'Poppins', sans-serif;
+}
+
+#webcam-frame {
+    box-shadow: 0 0 15px rgba(168, 85, 247, 0.8);
+    transition: all 0.3s ease-in-out;
+}
+
+#webcam-frame:hover {
+    transform: scale(1.05);
+}
+
+#latest-event {
+    animation: slideIn 0.5s ease-out forwards;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}

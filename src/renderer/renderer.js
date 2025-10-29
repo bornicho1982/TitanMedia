@@ -22,15 +22,39 @@ const settingsCancelButton = document.getElementById('settings-cancel-button');
 const settingsSaveButton = document.getElementById('settings-save-button');
 const rtmpServerInput = document.getElementById('rtmp-server');
 const streamKeyInput = document.getElementById('stream-key');
+const overlayGallery = document.getElementById('overlay-gallery');
 
 let animationFrameId;
-let previewScene = '';
+let activeScene = '';
 let programScene = '';
 let selectedSource = '';
 let streamSettings = { server: '', key: '' };
 const transitionButton = document.getElementById('transition-button');
 
 // --- UI Update Functions ---
+
+async function updateOverlayGallery() {
+    const overlays = await window.core.getOverlayTemplates();
+    overlayGallery.innerHTML = ''; // Clear gallery
+
+    overlays.forEach(overlay => {
+        const overlayItem = document.createElement('div');
+        overlayItem.className = 'cursor-pointer rounded-lg overflow-hidden border-2 border-transparent hover:border-blue-500';
+        overlayItem.addEventListener('click', () => addOverlayToScene(overlay));
+
+        const img = document.createElement('img');
+        img.src = overlay.thumbnail;
+        img.className = 'w-full h-auto object-cover';
+
+        const name = document.createElement('p');
+        name.textContent = overlay.name;
+        name.className = 'text-center text-xs p-1 bg-gray-900 bg-opacity-75';
+
+        overlayItem.appendChild(img);
+        overlayItem.appendChild(name);
+        overlayGallery.appendChild(overlayItem);
+    });
+}
 
 async function updateSceneList() {
     const scenes = await window.core.getSceneList();
@@ -392,17 +416,43 @@ async function main() {
         console.log("OBS Started.");
 
         await updateSceneList();
+        await updateOverlayGallery(); // Populate overlays on startup
         const scenes = await window.core.getSceneList();
-        if (scenes.length > 1) {
-            await setAsPreviewScene(scenes[1]);
-        } else if (scenes.length > 0) {
-            // If only one scene, it's already program, nothing to preview
+        if (scenes.length > 0) {
+            // Set the first scene as the active one for editing
+            await setAsPreviewScene(scenes[0]);
         }
 
         renderLoop();
         setInterval(updateSceneList, 1000); // Periodically update scene highlights
     } catch (error) {
         console.error("Failed to initialize application:", error);
+    }
+}
+
+async function addOverlayToScene(overlay) {
+    if (!activeScene) {
+        alert("Por favor, selecciona una escena antes de añadir un overlay.");
+        return;
+    }
+    try {
+        const sourceName = `${overlay.name} Overlay`;
+        // 1. Add a browser source
+        await window.core.addSource(activeScene, 'browser_source', sourceName);
+
+        // 2. Set its URL to the local overlay file
+        const settings = {
+            url: overlay.url,
+            width: 1920, // Default to 1080p
+            height: 1080
+        };
+        await window.core.updateSourceProperties(sourceName, settings);
+
+        console.log(`Added and configured overlay '${sourceName}' to scene '${activeScene}'`);
+        await updateSourceList(activeScene);
+    } catch (error) {
+        console.error(`Failed to add overlay:`, error);
+        alert(`Error al añadir el overlay: ${error.message}`);
     }
 }
 
