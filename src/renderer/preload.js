@@ -1,5 +1,6 @@
 const { contextBridge } = require('electron');
 const path = require('path');
+const fs = require('fs');
 
 const addonPath = path.join(__dirname, '../../build/Release/titan_media_core');
 const core = require(addonPath);
@@ -39,7 +40,26 @@ contextBridge.exposeInMainWorld('core', {
   isStreaming: () => core.isStreaming(),
   startRecording: () => core.startRecording(),
   stopRecording: () => core.stopRecording(),
-  isRecording: () => core.isRecording()
+  isRecording: () => core.isRecording(),
+
+  // Overlay Management
+  getOverlayTemplates: () => {
+    const overlaysDir = path.join(__dirname, 'overlays');
+    try {
+      const templateDirs = fs.readdirSync(overlaysDir, { withFileTypes: true })
+        .filter(dirent => dirent.isDirectory())
+        .map(dirent => dirent.name);
+
+      return templateDirs.map(dir => ({
+        name: dir.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+        url: `file://${path.join(overlaysDir, dir, 'index.html')}`,
+        thumbnail: `./overlays/${dir}/thumbnail.png`
+      }));
+    } catch (error) {
+      console.error("Error reading overlay templates:", error);
+      return [];
+    }
+  }
 });
 
 contextBridge.exposeInMainWorld('platform', {
