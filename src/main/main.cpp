@@ -87,6 +87,53 @@ Napi::Value CreateSceneWithGameCapture(const Napi::CallbackInfo& info) {
     return env.Undefined();
 }
 
+// Function to add a video capture source to the main scene
+Napi::Value AddVideoCaptureSource(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (!main_scene_weak) {
+        throw Napi::Error::New(env, "Main scene does not exist. Please create a scene first.");
+    }
+
+    obs_source_t *main_scene_source = obs_weak_source_get_source(main_scene_weak);
+    if (!main_scene_source) {
+        throw Napi::Error::New(env, "Main scene reference is no longer valid.");
+    }
+
+    obs_scene_t *scene = obs_scene_from_source(main_scene_source);
+
+    // Determine the correct source ID based on the platform
+    #if defined(_WIN32)
+        const char* source_id = "dshow_input";
+    #elif defined(__APPLE__)
+        const char* source_id = "av_capture_input";
+    #else
+        const char* source_id = "v4l2_input";
+    #endif
+
+    std::cout << "Adding video capture source (" << source_id << ")..." << std::endl;
+
+    // Create the video capture source
+    obs_data_t *settings = obs_data_create();
+    obs_source_t *video_capture_source = obs_source_create(source_id, "Webcam", settings, nullptr);
+    obs_data_release(settings);
+
+    if (!video_capture_source) {
+        obs_source_release(main_scene_source);
+        throw Napi::Error::New(env, "Failed to create video capture source.");
+    }
+
+    // Add the source to the scene
+    obs_scene_add(scene, video_capture_source);
+
+    // Release strong references
+    obs_source_release(video_capture_source);
+    obs_source_release(main_scene_source);
+
+    std::cout << "Video capture source added." << std::endl;
+    return env.Undefined();
+}
+
 
 // Module initialization
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
@@ -94,6 +141,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("startup", Napi::Function::New(env, StartupOBS));
   exports.Set("shutdown", Napi::Function::New(env, ShutdownOBS));
   exports.Set("createScene", Napi::Function::New(env, CreateSceneWithGameCapture));
+  exports.Set("addVideoCapture", Napi::Function::New(env, AddVideoCaptureSource));
   return exports;
 }
 
