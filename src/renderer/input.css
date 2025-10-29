@@ -9,3 +9,15 @@
 .active-tab {
     @apply text-white border-blue-500;
 }
+
+.chat-message {
+    @apply mb-2 p-2 rounded-lg bg-gray-800 text-sm;
+}
+
+.chat-message .username {
+    @apply font-bold;
+}
+
+.chat-message .message-content {
+    @apply ml-2;
+}

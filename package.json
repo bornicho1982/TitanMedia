@@ -34,6 +34,7 @@
   },
   "dependencies": {
     "extract-zip": "^2.0.1",
-    "node-addon-api": "^8.5.0"
+    "node-addon-api": "^8.5.0",
+    "tmi.js": "^1.8.5"
   }
 }

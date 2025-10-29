@@ -61,7 +61,13 @@ contextBridge.exposeInMainWorld('core', {
     }
   },
 
-  selectLogo: () => ipcRenderer.invoke('select-logo')
+  selectLogo: () => ipcRenderer.invoke('select-logo'),
+
+  // Chat Management
+  chatConnect: (options) => ipcRenderer.invoke('chat-connect', options),
+  chatDisconnect: () => ipcRenderer.invoke('chat-disconnect'),
+  chatSendMessage: (channel, message) => ipcRenderer.invoke('chat-send-message', channel, message),
+  onChatMessage: (callback) => ipcRenderer.on('chat-message', (_event, value) => callback(value)),
 });
 
 contextBridge.exposeInMainWorld('platform', {
