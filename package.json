@@ -9,7 +9,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "cmake-js rebuild",
-    "start": "electron .",
+    "build:css": "tailwindcss -i ./src/renderer/input.css -o ./src/renderer/output.css",
+    "start": "npm run build:css && electron .",
     "postinstall": "node scripts/setup-deps.js"
   },
   "repository": {
@@ -25,8 +26,11 @@
   },
   "homepage": "https://github.com/bornicho1982/TitanMedia#readme",
   "devDependencies": {
+    "autoprefixer": "^10.4.21",
     "cmake-js": "^7.3.1",
-    "electron": "^39.0.0"
+    "electron": "^39.0.0",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.16"
   },
   "dependencies": {
     "extract-zip": "^2.0.1",

@@ -2,36 +2,18 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>TitanMedia Core Test</title>
+    <title>TitanMedia</title>
+    <link href="./output.css" rel="stylesheet">
 </head>
-<body>
-    <h1>TitanMedia Core Test</h1>
-    <p>Use the buttons below to interact with the C++ core.</p>
-
-    <button id="hello-button">Test Bridge (Hello)</button>
-    <button id="startup-button">Startup OBS</button>
-    <hr>
-    <button id="create-scene-button">1. Create Scene & Add Game Capture</button>
-    <br>
-    <button id="add-video-capture-button">2. Add Video Capture Source</button>
-    <br>
-    <button id="add-mic-button">3. Add Mic Source</button>
-    <br>
-    <button id="add-desktop-audio-button">4. Add Desktop Audio Source</button>
-    <hr>
-    <div>
-        <h3>Add Browser Source</h3>
-        <input type="text" id="browser-url" placeholder="URL" value="https://www.google.com">
-        <input type="number" id="browser-width" placeholder="Width" value="800">
-        <input type="number" id="browser-height" placeholder="Height" value="600">
-        <button id="add-browser-source-button">Add Browser Source</button>
+<body class="bg-gray-900 text-white">
+    <div class="flex flex-col h-screen">
+        <header class="bg-gray-800 text-center py-2">
+            <h1 class="text-xl font-bold">TitanMedia Preview</h1>
+        </header>
+        <main class="flex-grow p-4 flex items-center justify-center">
+            <canvas id="video-preview" class="border border-gray-700"></canvas>
+        </main>
     </div>
-    <hr>
-
-    <button id="shutdown-button">Shutdown OBS</button>
-
-    <div id="status" style="margin-top: 20px; font-family: monospace;"></div>
-
     <script src="./renderer.js"></script>
 </body>
 </html>
