@@ -16,7 +16,8 @@ contextBridge.exposeInMainWorld('core', {
   createScene: (name) => core.createScene(name),
   setCurrentScene: (name) => core.setCurrentScene(name),
   getSceneList: () => core.getSceneList(),
+  getSceneSources: (sceneName) => core.getSceneSources(sceneName),
 
-  // Source Management (example)
+  // Source Management
   addVideoCapture: (sceneName) => core.addVideoCapture(sceneName)
 });
