@@ -3,6 +3,7 @@ const ctx = canvas.getContext('2d');
 const sceneList = document.getElementById('scene-list');
 const sourceList = document.getElementById('source-list');
 const addSceneButton = document.getElementById('add-scene-button');
+const addSourceButton = document.getElementById('add-source-button');
 
 let animationFrameId;
 let activeScene = '';
@@ -25,8 +26,18 @@ async function updateSceneList() {
 }
 
 async function updateSourceList(sceneName) {
-    // For now, this is a placeholder as we haven't implemented getSceneSources yet
-    sourceList.innerHTML = `<li class="p-2">Sources for ${sceneName} will show here.</li>`;
+    if (!sceneName) {
+        sourceList.innerHTML = '';
+        return;
+    }
+    const sources = await window.core.getSceneSources(sceneName);
+    sourceList.innerHTML = ''; // Clear list
+    sources.forEach(source => {
+        const li = document.createElement('li');
+        li.textContent = source.name;
+        li.className = 'p-2 rounded';
+        sourceList.appendChild(li);
+    });
 }
 
 // --- Event Handlers & Logic ---
@@ -54,6 +65,21 @@ addSceneButton.addEventListener('click', async () => {
         }
     } catch (error) {
         console.error(`Failed to create scene: ${sceneName}`, error);
+    }
+});
+
+addSourceButton.addEventListener('click', async () => {
+    if (!activeScene) {
+        alert("Please select a scene first!");
+        return;
+    }
+    try {
+        // For now, it just adds a video capture source as a test
+        await window.core.addVideoCapture(activeScene);
+        console.log(`Added video capture source to ${activeScene}`);
+        await updateSourceList(activeScene);
+    } catch (error) {
+        console.error(`Failed to add source to scene: ${activeScene}`, error);
     }
 });
 

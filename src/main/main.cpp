@@ -123,7 +123,40 @@ Napi::Value GetSceneList(const Napi::CallbackInfo& info) {
     return napi_array;
 }
 
-// Helper to add a source to a named scene
+struct SceneSourcesCallbackData {
+    Napi::Env env;
+    Napi::Array array;
+};
+
+bool enum_scene_sources_callback(obs_scene_t *scene, obs_sceneitem_t *item, void *param) {
+    auto data = static_cast<SceneSourcesCallbackData*>(param);
+    obs_source_t *source = obs_sceneitem_get_source(item);
+    if (source) {
+        const char *name = obs_source_get_name(source);
+        Napi::Object source_info = Napi::Object::New(data->env);
+        source_info.Set("name", Napi::String::New(data->env, name));
+        data->array[data->array.Length()] = source_info;
+    }
+    return true;
+}
+
+Napi::Value GetSceneSources(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 1) throw Napi::Error::New(env, "Scene name is required.");
+
+    std::string scene_name = info[0].As<Napi::String>();
+    obs_source_t *scene_source = obs_get_source_by_name(scene_name.c_str());
+    if (!scene_source) throw Napi::Error::New(env, "Scene not found.");
+
+    obs_scene_t *scene = obs_scene_from_source(scene_source);
+
+    SceneSourcesCallbackData data = {env, Napi::Array::New(env)};
+    obs_scene_enum_items(scene, enum_scene_sources_callback, &data);
+
+    obs_source_release(scene_source);
+    return data.array;
+}
+
 void AddSourceToScene(const Napi::CallbackInfo& info, const char* source_id, const char* source_name) {
     Napi::Env env = info.Env();
     if (info.Length() < 1) throw Napi::Error::New(env, "Scene name is required.");
@@ -156,19 +189,6 @@ Napi::Value AddVideoCaptureSource(const Napi::CallbackInfo& info) {
     return info.Env().Undefined();
 }
 
-Napi::Value AddMicSource(const Napi::CallbackInfo& info) {
-    #if defined(_WIN32)
-        AddSourceToScene(info, "wasapi_input_capture", "Mic/Aux");
-    #elif defined(__APPLE__)
-        AddSourceToScene(info, "coreaudio_input_capture", "Mic/Aux");
-    #else
-        AddSourceToScene(info, "pulse_input_capture", "Mic/Aux");
-    #endif
-    return info.Env().Undefined();
-}
-
-// ... other Add...Source functions would follow a similar pattern ...
-
 // --- Module Initialization ---
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("startup", Napi::Function::New(env, StartupOBS));
@@ -177,8 +197,8 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("createScene", Napi::Function::New(env, CreateScene));
   exports.Set("setCurrentScene", Napi::Function::New(env, SetCurrentScene));
   exports.Set("getSceneList", Napi::Function::New(env, GetSceneList));
+  exports.Set("getSceneSources", Napi::Function::New(env, GetSceneSources));
   exports.Set("addVideoCapture", Napi::Function::New(env, AddVideoCaptureSource));
-  exports.Set("addMicSource", Napi::Function::New(env, AddMicSource));
 
   return exports;
 }
