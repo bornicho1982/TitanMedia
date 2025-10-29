@@ -24,11 +24,18 @@ const rtmpServerInput = document.getElementById('rtmp-server');
 const streamKeyInput = document.getElementById('stream-key');
 const overlayGallery = document.getElementById('overlay-gallery');
 
+// Branding Settings constants
+const streamerNameInput = document.getElementById('streamer-name');
+const brandColorInput = document.getElementById('brand-color');
+const logoSelectButton = document.getElementById('logo-select-button');
+const logoPathElement = document.getElementById('logo-path');
+
 let animationFrameId;
-let activeScene = '';
+let previewScene = '';
 let programScene = '';
 let selectedSource = '';
 let streamSettings = { server: '', key: '' };
+let brandingSettings = { name: 'YourName', color: '#8a2be2', logo: '' };
 const transitionButton = document.getElementById('transition-button');
 
 // --- UI Update Functions ---
@@ -415,6 +422,9 @@ async function main() {
         await window.core.startup();
         console.log("OBS Started.");
 
+        loadSettings();
+        setupSettingsModal();
+
         await updateSceneList();
         await updateOverlayGallery(); // Populate overlays on startup
         const scenes = await window.core.getSceneList();
@@ -431,25 +441,28 @@ async function main() {
 }
 
 async function addOverlayToScene(overlay) {
-    if (!activeScene) {
-        alert("Por favor, selecciona una escena antes de añadir un overlay.");
+    if (!previewScene) {
+        alert("Por favor, selecciona una escena de previsualización antes de añadir un overlay.");
         return;
     }
     try {
         const sourceName = `${overlay.name} Overlay`;
-        // 1. Add a browser source
-        await window.core.addSource(activeScene, 'browser_source', sourceName);
+        await window.core.addSource(previewScene, 'browser_source', sourceName);
 
-        // 2. Set its URL to the local overlay file
+        const url = new URL(overlay.url);
+        url.searchParams.append('name', brandingSettings.name);
+        url.searchParams.append('color', brandingSettings.color);
+        // Logo would be handled inside the overlay's JS if it needs to display it
+
         const settings = {
-            url: overlay.url,
-            width: 1920, // Default to 1080p
+            url: url.href,
+            width: 1920,
             height: 1080
         };
         await window.core.updateSourceProperties(sourceName, settings);
 
-        console.log(`Added and configured overlay '${sourceName}' to scene '${activeScene}'`);
-        await updateSourceList(activeScene);
+        console.log(`Added and configured overlay '${sourceName}' to scene '${previewScene}'`);
+        await updateSourceList(previewScene);
     } catch (error) {
         console.error(`Failed to add overlay:`, error);
         alert(`Error al añadir el overlay: ${error.message}`);
@@ -464,23 +477,79 @@ window.addEventListener('beforeunload', () => {
 });
 
 // --- Settings Modal Logic ---
-settingsButton.addEventListener('click', () => {
-    rtmpServerInput.value = streamSettings.server;
-    streamKeyInput.value = streamSettings.key;
-    settingsModal.classList.remove('hidden');
-});
 
-settingsCancelButton.addEventListener('click', () => {
-    settingsModal.classList.add('hidden');
-});
+function setupSettingsModal() {
+    const tabs = document.querySelectorAll('.tab-button');
+    const tabContents = document.querySelectorAll('.tab-content');
 
-settingsSaveButton.addEventListener('click', () => {
-    streamSettings.server = rtmpServerInput.value;
-    streamSettings.key = streamKeyInput.value;
-    // For a real app, we'd save this to disk (e.g., localStorage)
-    console.log("Stream settings saved:", streamSettings);
-    settingsModal.classList.add('hidden');
-});
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            // Update active tab styles
+            tabs.forEach(t => t.classList.remove('active-tab'));
+            tab.classList.add('active-tab');
+
+            // Show/hide content
+            const tabName = tab.dataset.tab;
+            tabContents.forEach(content => {
+                if (content.id === `tab-content-${tabName}`) {
+                    content.classList.remove('hidden');
+                } else {
+                    content.classList.add('hidden');
+                }
+            });
+        });
+    });
+
+    settingsButton.addEventListener('click', () => {
+        // Load current settings into the modal
+        rtmpServerInput.value = streamSettings.server;
+        streamKeyInput.value = streamSettings.key;
+        streamerNameInput.value = brandingSettings.name;
+        brandColorInput.value = brandingSettings.color;
+        logoPathElement.textContent = brandingSettings.logo || 'Ningún archivo seleccionado.';
+
+        settingsModal.classList.remove('hidden');
+    });
+
+    settingsCancelButton.addEventListener('click', () => {
+        settingsModal.classList.add('hidden');
+    });
+
+    settingsSaveButton.addEventListener('click', () => {
+        // Save stream settings
+        streamSettings.server = rtmpServerInput.value;
+        streamSettings.key = streamKeyInput.value;
+        localStorage.setItem('streamSettings', JSON.stringify(streamSettings));
+
+        // Save branding settings
+        brandingSettings.name = streamerNameInput.value;
+        brandingSettings.color = brandColorInput.value;
+        // The logo path is saved by the logo selection logic
+        localStorage.setItem('brandingSettings', JSON.stringify(brandingSettings));
+
+        console.log("Settings saved:", { streamSettings, brandingSettings });
+        settingsModal.classList.add('hidden');
+    });
+
+    logoSelectButton.addEventListener('click', async () => {
+        const logoPath = await window.core.selectLogo();
+        if (logoPath) {
+            logoPathElement.textContent = logoPath;
+            brandingSettings.logo = logoPath;
+        }
+    });
+}
+
+function loadSettings() {
+    const savedStreamSettings = localStorage.getItem('streamSettings');
+    if (savedStreamSettings) {
+        streamSettings = JSON.parse(savedStreamSettings);
+    }
+    const savedBrandingSettings = localStorage.getItem('brandingSettings');
+    if (savedBrandingSettings) {
+        brandingSettings = JSON.parse(savedBrandingSettings);
+    }
+}
 
 // --- Output Control Logic ---
 

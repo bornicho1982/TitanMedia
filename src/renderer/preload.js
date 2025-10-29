@@ -1,4 +1,4 @@
-const { contextBridge } = require('electron');
+const { contextBridge, ipcRenderer } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -59,7 +59,9 @@ contextBridge.exposeInMainWorld('core', {
       console.error("Error reading overlay templates:", error);
       return [];
     }
-  }
+  },
+
+  selectLogo: () => ipcRenderer.invoke('select-logo')
 });
 
 contextBridge.exposeInMainWorld('platform', {
