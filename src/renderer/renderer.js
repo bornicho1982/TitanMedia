@@ -1,82 +1,57 @@
-const statusDiv = document.getElementById('status');
+const canvas = document.getElementById('video-preview');
+const ctx = canvas.getContext('2d');
+let animationFrameId;
 
-document.getElementById('hello-button').addEventListener('click', async () => {
+async function setupOBS() {
     try {
-        const message = await window.core.hello();
-        statusDiv.textContent = `SUCCESS: ${message}`;
-    } catch (error) {
-        statusDiv.textContent = `ERROR: ${error.message}`;
-    }
-});
-
-document.getElementById('startup-button').addEventListener('click', async () => {
-    try {
+        console.log("Starting OBS...");
         await window.core.startup();
-        statusDiv.textContent = 'SUCCESS: OBS startup sequence initiated.';
+        console.log("OBS Started. Creating scene...");
+        await window.core.createScene(); // Create a default scene with a game capture
+        console.log("Scene created.");
     } catch (error) {
-        statusDiv.textContent = `ERROR: ${error.message}`;
+        console.error("Failed to setup OBS:", error);
     }
-});
+}
 
-document.getElementById('create-scene-button').addEventListener('click', async () => {
-    try {
-        await window.core.createScene();
-        statusDiv.textContent = 'SUCCESS: Scene created and game capture source added.';
-    } catch (error) {
-        statusDiv.textContent = `ERROR: ${error.message}`;
-    }
-});
+function renderLoop() {
+    animationFrameId = requestAnimationFrame(renderLoop);
 
-document.getElementById('add-video-capture-button').addEventListener('click', async () => {
-    try {
-        await window.core.addVideoCapture();
-        statusDiv.textContent = 'SUCCESS: Video capture source added.';
-    } catch (error) {
-        statusDiv.textContent = `ERROR: ${error.message}`;
-    }
-});
+    window.core.getLatestFrame().then(frame => {
+        if (frame && frame.data) {
+            // Resize canvas if necessary
+            if (canvas.width !== frame.width || canvas.height !== frame.height) {
+                canvas.width = frame.width;
+                canvas.height = frame.height;
+            }
 
-document.getElementById('add-mic-button').addEventListener('click', async () => {
-    try {
-        await window.core.addMicSource();
-        statusDiv.textContent = 'SUCCESS: Mic source added.';
-    } catch (error) {
-        statusDiv.textContent = `ERROR: ${error.message}`;
-    }
-});
-
-document.getElementById('add-desktop-audio-button').addEventListener('click', async () => {
-    try {
-        await window.core.addDesktopAudioSource();
-        statusDiv.textContent = 'SUCCESS: Desktop audio source added.';
-    } catch (error) {
-        statusDiv.textContent = `ERROR: ${error.message}`;
-    }
-});
-
-document.getElementById('add-browser-source-button').addEventListener('click', async () => {
-    try {
-        const url = document.getElementById('browser-url').value;
-        const width = parseInt(document.getElementById('browser-width').value, 10);
-        const height = parseInt(document.getElementById('browser-height').value, 10);
-
-        if (!url || !width || !height) {
-            statusDiv.textContent = 'ERROR: URL, width, and height are required for browser source.';
-            return;
+            // Create ImageData and draw to canvas
+            const imageData = new ImageData(new Uint8ClampedArray(frame.data), frame.width, frame.height);
+            ctx.putImageData(imageData, 0, 0);
         }
+    }).catch(error => {
+        console.error("Error getting frame:", error);
+    });
+}
 
-        await window.core.addBrowserSource(url, width, height);
-        statusDiv.textContent = 'SUCCESS: Browser source added.';
-    } catch (error) {
-        statusDiv.textContent = `ERROR: ${error.message}`;
+// Main execution
+async function main() {
+    await setupOBS();
+    renderLoop();
+}
+
+main();
+
+// Cleanup on exit
+window.addEventListener('beforeunload', async () => {
+    if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
     }
-});
-
-document.getElementById('shutdown-button').addEventListener('click', async () => {
     try {
+        console.log("Shutting down OBS...");
         await window.core.shutdown();
-        statusDiv.textContent = 'SUCCESS: OBS shutdown sequence initiated.';
+        console.log("OBS Shutdown complete.");
     } catch (error) {
-        statusDiv.textContent = `ERROR: ${error.message}`;
+        console.error("Failed to shutdown OBS:", error);
     }
 });
