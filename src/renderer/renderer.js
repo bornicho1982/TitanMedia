@@ -30,12 +30,24 @@ const brandColorInput = document.getElementById('brand-color');
 const logoSelectButton = document.getElementById('logo-select-button');
 const logoPathElement = document.getElementById('logo-path');
 
+// Twitch Accounts constants
+const twitchChannelInput = document.getElementById('twitch-channel');
+const twitchOauthInput = document.getElementById('twitch-oauth');
+
+// Chat Panel constants
+const chatMessages = document.getElementById('chat-messages');
+const chatInput = document.getElementById('chat-input');
+const chatSendButton = document.getElementById('chat-send-button');
+const chatConnectButton = document.getElementById('chat-connect-button');
+
+
 let animationFrameId;
 let previewScene = '';
 let programScene = '';
 let selectedSource = '';
 let streamSettings = { server: '', key: '' };
 let brandingSettings = { name: 'YourName', color: '#8a2be2', logo: '' };
+let twitchSettings = { channel: '', oauth: '' };
 const transitionButton = document.getElementById('transition-button');
 
 // --- UI Update Functions ---
@@ -424,6 +436,7 @@ async function main() {
 
         loadSettings();
         setupSettingsModal();
+        setupChat();
 
         await updateSceneList();
         await updateOverlayGallery(); // Populate overlays on startup
@@ -507,6 +520,8 @@ function setupSettingsModal() {
         streamerNameInput.value = brandingSettings.name;
         brandColorInput.value = brandingSettings.color;
         logoPathElement.textContent = brandingSettings.logo || 'Ningún archivo seleccionado.';
+        twitchChannelInput.value = twitchSettings.channel;
+        twitchOauthInput.value = twitchSettings.oauth;
 
         settingsModal.classList.remove('hidden');
     });
@@ -527,7 +542,12 @@ function setupSettingsModal() {
         // The logo path is saved by the logo selection logic
         localStorage.setItem('brandingSettings', JSON.stringify(brandingSettings));
 
-        console.log("Settings saved:", { streamSettings, brandingSettings });
+        // Save Twitch settings
+        twitchSettings.channel = twitchChannelInput.value;
+        twitchSettings.oauth = twitchOauthInput.value;
+        localStorage.setItem('twitchSettings', JSON.stringify(twitchSettings));
+
+        console.log("Settings saved:", { streamSettings, brandingSettings, twitchSettings });
         settingsModal.classList.add('hidden');
     });
 
@@ -549,7 +569,82 @@ function loadSettings() {
     if (savedBrandingSettings) {
         brandingSettings = JSON.parse(savedBrandingSettings);
     }
+    const savedTwitchSettings = localStorage.getItem('twitchSettings');
+    if (savedTwitchSettings) {
+        twitchSettings = JSON.parse(savedTwitchSettings);
+    }
 }
+
+
+// --- Chat Logic ---
+function setupChat() {
+    let isConnected = false;
+
+    chatConnectButton.addEventListener('click', () => {
+        if (isConnected) {
+            // Disconnect
+            window.core.chatDisconnect();
+            chatConnectButton.textContent = 'Conectar';
+            chatConnectButton.classList.remove('bg-red-600');
+            chatConnectButton.classList.add('bg-green-600');
+            isConnected = false;
+        } else {
+            // Connect
+            if (!twitchSettings.channel || !twitchSettings.oauth) {
+                alert("Por favor, configura tu canal de Twitch y tu token OAuth en Ajustes.");
+                return;
+            }
+            const options = {
+                options: { debug: true },
+                identity: {
+                    username: twitchSettings.channel, // In tmi, username and channel are often the same for chat bots
+                    password: twitchSettings.oauth,
+                },
+                channels: [twitchSettings.channel],
+            };
+            window.core.chatConnect(options);
+            chatConnectButton.textContent = 'Desconectar';
+            chatConnectButton.classList.remove('bg-green-600');
+            chatConnectButton.classList.add('bg-red-600');
+            isConnected = true;
+        }
+    });
+
+    chatSendButton.addEventListener('click', () => {
+        const message = chatInput.value;
+        if (message && isConnected) {
+            window.core.chatSendMessage(twitchSettings.channel, message);
+            chatInput.value = '';
+        }
+    });
+
+    chatInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            chatSendButton.click();
+        }
+    });
+
+    window.core.onChatMessage(({ username, message, color }) => {
+        const messageElement = document.createElement('div');
+        messageElement.className = 'chat-message';
+
+        const usernameSpan = document.createElement('span');
+        usernameSpan.className = 'username';
+        usernameSpan.textContent = username;
+        usernameSpan.style.color = color;
+
+        const contentSpan = document.createElement('span');
+        contentSpan.className = 'message-content';
+        contentSpan.textContent = `: ${message}`;
+
+        messageElement.appendChild(usernameSpan);
+        messageElement.appendChild(contentSpan);
+
+        chatMessages.appendChild(messageElement);
+        chatMessages.scrollTop = chatMessages.scrollHeight; // Auto-scroll to bottom
+    });
+}
+
 
 // --- Output Control Logic ---
 
