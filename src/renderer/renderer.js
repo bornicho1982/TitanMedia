@@ -12,11 +12,19 @@ const propertiesFormContainer = document.getElementById('properties-form-contain
 const propertiesCancelButton = document.getElementById('properties-cancel-button');
 const propertiesSaveButton = document.getElementById('properties-save-button');
 const audioMixerList = document.getElementById('audio-mixer-list');
-
+const startStreamButton = document.getElementById('start-stream-button');
+const startRecordButton = document.getElementById('start-record-button');
+const settingsButton = document.getElementById('settings-button');
+const settingsModal = document.getElementById('settings-modal');
+const settingsCancelButton = document.getElementById('settings-cancel-button');
+const settingsSaveButton = document.getElementById('settings-save-button');
+const rtmpServerInput = document.getElementById('rtmp-server');
+const streamKeyInput = document.getElementById('stream-key');
 
 let animationFrameId;
 let activeScene = '';
 let selectedSource = '';
+let streamSettings = { server: '', key: '' };
 
 // --- UI Update Functions ---
 
@@ -372,3 +380,73 @@ window.addEventListener('beforeunload', () => {
     if (animationFrameId) cancelAnimationFrame(animationFrameId);
     window.core.shutdown().catch(console.error);
 });
+
+// --- Settings Modal Logic ---
+settingsButton.addEventListener('click', () => {
+    rtmpServerInput.value = streamSettings.server;
+    streamKeyInput.value = streamSettings.key;
+    settingsModal.classList.remove('hidden');
+});
+
+settingsCancelButton.addEventListener('click', () => {
+    settingsModal.classList.add('hidden');
+});
+
+settingsSaveButton.addEventListener('click', () => {
+    streamSettings.server = rtmpServerInput.value;
+    streamSettings.key = streamKeyInput.value;
+    // For a real app, we'd save this to disk (e.g., localStorage)
+    console.log("Stream settings saved:", streamSettings);
+    settingsModal.classList.add('hidden');
+});
+
+// --- Output Control Logic ---
+
+startStreamButton.addEventListener('click', async () => {
+    const streaming = await window.core.isStreaming();
+    if (streaming) {
+        await window.core.stopStreaming();
+    } else {
+        if (!streamSettings.server || !streamSettings.key) {
+            alert("Please set the RTMP server and stream key in Settings first.");
+            return;
+        }
+        await window.core.startStreaming(streamSettings.server, streamSettings.key);
+    }
+});
+
+startRecordButton.addEventListener('click', async () => {
+    const recording = await window.core.isRecording();
+    if (recording) {
+        await window.core.stopRecording();
+    } else {
+        await window.core.startRecording();
+    }
+});
+
+async function updateControlState() {
+    const isStreaming = await window.core.isStreaming();
+    const isRecording = await window.core.isRecording();
+
+    if (isStreaming) {
+        startStreamButton.textContent = "Detener Transmisión";
+        startStreamButton.classList.remove('bg-blue-600');
+        startStreamButton.classList.add('bg-red-600');
+    } else {
+        startStreamButton.textContent = "Iniciar Transmisión";
+        startStreamButton.classList.remove('bg-red-600');
+        startStreamButton.classList.add('bg-blue-600');
+    }
+
+    if (isRecording) {
+        startRecordButton.textContent = "Detener Grabación";
+        startRecordButton.classList.remove('bg-gray-600');
+        startRecordButton.classList.add('bg-red-600');
+    } else {
+        startRecordButton.textContent = "Iniciar Grabación";
+        startRecordButton.classList.remove('bg-red-600');
+        startRecordButton.classList.add('bg-gray-600');
+    }
+}
+
+setInterval(updateControlState, 1000); // Check status every second
