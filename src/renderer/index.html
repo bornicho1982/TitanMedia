@@ -11,13 +11,28 @@
 
         <!-- Main Content Area (3/4 width) -->
         <div class="col-span-3 flex flex-col h-full">
-            <!-- Video Preview -->
-            <main class="flex-grow p-4 flex items-center justify-center bg-black rounded-lg">
-                <canvas id="video-preview" class="border border-gray-700 w-full h-full"></canvas>
+            <!-- Studio Mode Previews -->
+            <main class="flex-grow grid grid-cols-11 gap-2 p-4 bg-black rounded-t-lg">
+                <!-- Preview (5/11 width) -->
+                <div class="col-span-5 flex flex-col">
+                    <h2 class="text-center font-bold mb-2">Previsualización</h2>
+                    <canvas id="preview-canvas" class="border border-gray-700 w-full h-full"></canvas>
+                </div>
+
+                <!-- Transition Controls (1/11 width) -->
+                <div class="col-span-1 flex flex-col items-center justify-center">
+                    <button id="transition-button" class="px-4 py-2 bg-gray-600 rounded hover:bg-gray-500">Transición</button>
+                </div>
+
+                <!-- Program (5/11 width) -->
+                <div class="col-span-5 flex flex-col">
+                    <h2 class="text-center font-bold mb-2">Programa</h2>
+                    <canvas id="program-canvas" class="border-2 border-red-600 w-full h-full"></canvas>
+                </div>
             </main>
 
             <!-- Footer Panels: Scenes, Sources, and Mixer -->
-            <footer class="grid grid-cols-3 gap-4 p-4 bg-gray-900 border-t border-gray-700 rounded-b-lg" style="height: 250px;">
+            <footer class="grid grid-cols-3 gap-4 p-4 bg-gray-900 border-t-2 border-gray-700 rounded-b-lg" style="height: 250px;">
                 <!-- Scenes Panel -->
                 <div class="flex flex-col bg-gray-800 rounded-lg border border-gray-700">
                 <div class="flex items-center justify-between p-2 border-b border-gray-700">

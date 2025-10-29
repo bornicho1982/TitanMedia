@@ -10,11 +10,18 @@
 #include <map>
 
 // --- Global variables & state ---
-static std::vector<uint8_t> latest_frame_data;
-static uint32_t frame_width = 0;
-static uint32_t frame_height = 0;
-static std::mutex frame_mutex;
+static std::vector<uint8_t> g_program_frame_data;
+static std::vector<uint8_t> g_preview_frame_data;
+static uint32_t g_frame_width = 0;
+static uint32_t g_frame_height = 0;
+static std::mutex g_frame_mutex;
 static bool obs_is_running = false;
+
+// --- Studio Mode ---
+static obs_source_t* g_main_transition = nullptr;
+static obs_source_t* g_preview_scene = nullptr;
+static gs_texrender_t* g_preview_texrender = nullptr;
+
 struct VolmeterData {
     obs_volmeter_t* volmeter;
     std::string* name_ptr;
@@ -45,30 +52,55 @@ void volmeter_callback(void *param, const float magnitude[MAX_AUDIO_CHANNELS],
 
 // --- OBS Render Callback ---
 void main_render_callback(void *param, uint32_t cx, uint32_t cy) {
-    gs_texture_t *tex = obs_get_main_texture();
-    if (!tex) return;
+    gs_texture_t *program_tex = obs_get_main_texture();
+    if (!program_tex) return;
 
-    uint32_t width = gs_texture_get_width(tex);
-    uint32_t height = gs_texture_get_height(tex);
+    uint32_t width = gs_texture_get_width(program_tex);
+    uint32_t height = gs_texture_get_height(program_tex);
     if (width == 0 || height == 0) return;
 
     uint8_t *video_data = nullptr;
     uint32_t video_linesize = 0;
 
-    if (gs_texture_map(tex, &video_data, &video_linesize)) {
-        std::lock_guard<std::mutex> lock(frame_mutex);
-        frame_width = width;
-        frame_height = height;
+    // --- Render Program Texture ---
+    if (gs_texture_map(program_tex, &video_data, &video_linesize)) {
+        std::lock_guard<std::mutex> lock(g_frame_mutex);
+        g_frame_width = width;
+        g_frame_height = height;
         size_t data_size = width * height * 4;
-        if (latest_frame_data.size() != data_size) {
-            latest_frame_data.resize(data_size);
+        if (g_program_frame_data.size() != data_size) {
+            g_program_frame_data.resize(data_size);
         }
         for (uint32_t i = 0; i < height; i++) {
-            memcpy(latest_frame_data.data() + (i * width * 4),
-                   video_data + (i * video_linesize),
-                   width * 4);
+            memcpy(g_program_frame_data.data() + (i * width * 4), video_data + (i * video_linesize), width * 4);
         }
-        gs_texture_unmap(tex);
+        gs_texture_unmap(program_tex);
+    }
+
+    // --- Render Preview Texture ---
+    if (g_preview_scene) {
+        if (gs_texrender_begin(g_preview_texrender, width, height)) {
+            obs_source_video_render(g_preview_scene);
+            gs_texrender_end(g_preview_texrender);
+
+            gs_texture_t* preview_tex = gs_texrender_get_texture(g_preview_texrender);
+            if (preview_tex && gs_texture_map(preview_tex, &video_data, &video_linesize)) {
+                std::lock_guard<std::mutex> lock(g_frame_mutex);
+                size_t data_size = width * height * 4;
+                if (g_preview_frame_data.size() != data_size) {
+                    g_preview_frame_data.resize(data_size);
+                }
+                for (uint32_t i = 0; i < height; i++) {
+                    memcpy(g_preview_frame_data.data() + (i * width * 4), video_data + (i * video_linesize), width * 4);
+                }
+                gs_texture_unmap(preview_tex);
+            }
+        }
+    } else {
+        std::lock_guard<std::mutex> lock(g_frame_mutex);
+        if (!g_preview_frame_data.empty()) {
+            g_preview_frame_data.clear();
+        }
     }
 }
 
@@ -81,6 +113,13 @@ Napi::Value StartupOBS(const Napi::CallbackInfo& info) {
     if (!obs_startup("en-US", nullptr, nullptr)) {
         throw Napi::Error::New(env, "obs_startup failed");
     }
+
+    // Create the main transition that will be our output source
+    g_main_transition = obs_source_create("cut_transition", "Main Transition", nullptr, nullptr);
+    obs_set_output_source(0, g_main_transition);
+
+    g_preview_texrender = gs_texrender_create(GS_RGBA, GS_ZS_NONE);
+
     obs_add_main_render_callback(main_render_callback, nullptr);
     obs_is_running = true;
     return env.Undefined();
@@ -91,6 +130,8 @@ Napi::Value ShutdownOBS(const Napi::CallbackInfo& info) {
     if (!obs_is_running) return env.Undefined();
 
     obs_remove_main_render_callback(main_render_callback, nullptr);
+    gs_texrender_destroy(g_preview_texrender);
+    obs_source_release(g_main_transition);
     obs_shutdown();
     obs_is_running = false;
     return env.Undefined();
@@ -98,14 +139,21 @@ Napi::Value ShutdownOBS(const Napi::CallbackInfo& info) {
 
 Napi::Value GetLatestFrame(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
-    std::lock_guard<std::mutex> lock(frame_mutex);
-    if (latest_frame_data.empty()) return env.Null();
+    std::lock_guard<std::mutex> lock(g_frame_mutex);
 
-    Napi::Buffer<uint8_t> buffer = Napi::Buffer<uint8_t>::Copy(env, latest_frame_data.data(), latest_frame_data.size());
     Napi::Object result = Napi::Object::New(env);
-    result.Set("data", buffer);
-    result.Set("width", Napi::Number::New(env, frame_width));
-    result.Set("height", Napi::Number::New(env, frame_height));
+
+    if (!g_program_frame_data.empty()) {
+        Napi::Buffer<uint8_t> buffer = Napi::Buffer<uint8_t>::Copy(env, g_program_frame_data.data(), g_program_frame_data.size());
+        result.Set("programFrame", buffer);
+    }
+    if (!g_preview_frame_data.empty()) {
+        Napi::Buffer<uint8_t> buffer = Napi::Buffer<uint8_t>::Copy(env, g_preview_frame_data.data(), g_preview_frame_data.size());
+        result.Set("previewFrame", buffer);
+    }
+
+    result.Set("width", Napi::Number::New(env, g_frame_width));
+    result.Set("height", Napi::Number::New(env, g_frame_height));
     return result;
 }
 
@@ -117,11 +165,18 @@ Napi::Value CreateScene(const Napi::CallbackInfo& info) {
     obs_scene_t *scene = obs_scene_create(scene_name.c_str());
     if (!scene) throw Napi::Error::New(env, "Failed to create scene.");
 
+    // If this is the first scene, set it to program view
+    if (obs_transition_get_source(g_main_transition, OBS_TRANSITION_SOURCE_A) == nullptr) {
+        obs_transition_set(g_main_transition, (obs_source_t*)scene);
+    }
+
     obs_scene_release(scene);
     return env.Undefined();
 }
 
-Napi::Value SetCurrentScene(const Napi::CallbackInfo& info) {
+// --- Studio Mode Functions ---
+
+Napi::Value SetPreviewScene(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     if (info.Length() < 1) throw Napi::Error::New(env, "Scene name is required.");
 
@@ -129,9 +184,29 @@ Napi::Value SetCurrentScene(const Napi::CallbackInfo& info) {
     obs_source_t *source = obs_get_source_by_name(scene_name.c_str());
     if (!source) throw Napi::Error::New(env, "Scene not found.");
 
-    obs_set_output_source(0, source);
+    // With a simple transition like "cut", setting source B is not how it works.
+    // We set it as the *next* source for the main transition.
+    obs_transition_set(g_main_transition, source);
+    g_preview_scene = source; // Keep a reference for manual rendering
+
     obs_source_release(source);
     return env.Undefined();
+}
+
+Napi::Value ExecuteTransition(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    obs_transition_start(g_main_transition, OBS_TRANSITION_MODE_AUTO, 0, nullptr);
+    g_preview_scene = nullptr; // Preview becomes program, clear preview scene
+    return env.Undefined();
+}
+
+Napi::Value GetProgramSceneName(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    obs_source_t* program_source = obs_transition_get_source(g_main_transition, OBS_TRANSITION_SOURCE_A);
+    if (program_source) {
+        return Napi::String::New(env, obs_source_get_name(program_source));
+    }
+    return env.Null();
 }
 
 bool enum_scenes_callback(void *param, obs_source_t *source) {
@@ -540,8 +615,12 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("shutdown", Napi::Function::New(env, ShutdownOBS));
   exports.Set("getLatestFrame", Napi::Function::New(env, GetLatestFrame));
   exports.Set("createScene", Napi::Function::New(env, CreateScene));
-  exports.Set("setCurrentScene", Napi::Function::New(env, SetCurrentScene));
   exports.Set("getSceneList", Napi::Function::New(env, GetSceneList));
+
+  // Studio Mode Functions
+  exports.Set("setPreviewScene", Napi::Function::New(env, SetPreviewScene));
+  exports.Set("executeTransition", Napi::Function::New(env, ExecuteTransition));
+  exports.Set("getProgramSceneName", Napi::Function::New(env, GetProgramSceneName));
   exports.Set("getSceneSources", Napi::Function::New(env, GetSceneSources));
   exports.Set("addSource", Napi::Function::New(env, AddSource));
   exports.Set("removeSource", Napi::Function::New(env, RemoveSource));
