@@ -1,0 +1,34 @@
+{
+  "name": "app",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "lib": "lib"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "cmake-js rebuild",
+    "start": "electron .",
+    "postinstall": "node scripts/setup-deps.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bornicho1982/TitanMedia.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/bornicho1982/TitanMedia/issues"
+  },
+  "homepage": "https://github.com/bornicho1982/TitanMedia#readme",
+  "devDependencies": {
+    "cmake-js": "^7.3.1",
+    "electron": "^39.0.0"
+  },
+  "dependencies": {
+    "node-addon-api": "^8.5.0"
+  }
+}

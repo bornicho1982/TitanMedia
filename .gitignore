@@ -1,0 +1,25 @@
+# Node.js
+node_modules
+npm-debug.log
+yarn-error.log
+
+# Build artifacts
+build/
+Release/
+
+# Downloaded archives
+*.zip
+*.tar.gz
+*.deb
+
+# Dependency directories
+libobs/
+simde/
+deps/
+
+# Extracted source directories
+OBS-Studio-*/
+obs-studio-*/
+
+# Scratch directory
+jules-scratch/
