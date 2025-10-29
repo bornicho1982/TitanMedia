@@ -4,10 +4,18 @@ const sceneList = document.getElementById('scene-list');
 const sourceList = document.getElementById('source-list');
 const addSceneButton = document.getElementById('add-scene-button');
 const addSourceButton = document.getElementById('add-source-button');
+const removeSourceButton = document.getElementById('remove-source-button');
 const sourceMenu = document.getElementById('source-menu');
+const propertiesModal = document.getElementById('properties-modal');
+const propertiesTitle = document.getElementById('properties-title');
+const propertiesFormContainer = document.getElementById('properties-form-container');
+const propertiesCancelButton = document.getElementById('properties-cancel-button');
+const propertiesSaveButton = document.getElementById('properties-save-button');
+
 
 let animationFrameId;
 let activeScene = '';
+let selectedSource = '';
 
 // --- UI Update Functions ---
 
@@ -29,16 +37,34 @@ async function updateSceneList() {
 async function updateSourceList(sceneName) {
     if (!sceneName) {
         sourceList.innerHTML = '';
+        selectedSource = ''; // Clear selection when scene changes
         return;
     }
     const sources = await window.core.getSceneSources(sceneName);
     sourceList.innerHTML = ''; // Clear list
+
+    // Check if the selected source still exists
+    const selectedSourceExists = sources.some(s => s.name === selectedSource);
+    if (!selectedSourceExists) {
+        selectedSource = '';
+    }
+
     sources.forEach(source => {
         const li = document.createElement('li');
         li.textContent = source.name;
-        li.className = 'p-2 rounded';
+        li.className = 'p-2 rounded cursor-pointer hover:bg-gray-700';
+        if (source.name === selectedSource) {
+            li.classList.add('bg-blue-600');
+        }
+        li.addEventListener('click', () => setSelectedSource(source.name));
+        li.addEventListener('dblclick', () => openPropertiesModal(source.name));
         sourceList.appendChild(li);
     });
+}
+
+function setSelectedSource(name) {
+    selectedSource = name;
+    updateSourceList(activeScene); // Re-render to show selection
 }
 
 // --- Event Handlers & Logic ---
@@ -66,6 +92,22 @@ addSceneButton.addEventListener('click', async () => {
         }
     } catch (error) {
         console.error(`Failed to create scene: ${sceneName}`, error);
+    }
+});
+
+removeSourceButton.addEventListener('click', async () => {
+    if (!activeScene || !selectedSource) {
+        alert("Please select a source to remove.");
+        return;
+    }
+    try {
+        await window.core.removeSource(activeScene, selectedSource);
+        console.log(`Removed source '${selectedSource}' from scene '${activeScene}'`);
+        selectedSource = ''; // Clear selection
+        await updateSourceList(activeScene);
+    } catch (error) {
+        console.error(`Failed to remove source:`, error);
+        alert(`Error removing source: ${error.message}`);
     }
 });
 
@@ -145,6 +187,86 @@ sourceMenu.addEventListener('click', async (event) => {
         alert(`Error al añadir la fuente: ${error.message}`);
     }
 });
+
+// --- Properties Modal Logic ---
+
+// OBS Property Types Enum (for clarity)
+const OBS_PROPERTY_LIST = 4;
+
+async function openPropertiesModal(sourceName) {
+    propertiesTitle.textContent = `Propiedades de: ${sourceName}`;
+    propertiesFormContainer.innerHTML = ''; // Clear old form
+
+    try {
+        const properties = await window.core.getSourceProperties(sourceName);
+        if (!properties) {
+            propertiesFormContainer.innerHTML = '<p>Esta fuente no tiene propiedades configurables.</p>';
+            propertiesModal.classList.remove('hidden');
+            return;
+        }
+
+        properties.forEach(prop => {
+            const propContainer = document.createElement('div');
+            const label = document.createElement('label');
+            label.textContent = prop.description;
+            label.className = 'block mb-1 text-sm font-medium';
+            propContainer.appendChild(label);
+
+            if (prop.type === OBS_PROPERTY_LIST) {
+                const select = document.createElement('select');
+                select.name = prop.name;
+                select.className = 'bg-gray-700 border border-gray-600 rounded w-full p-2';
+                prop.options.forEach(option => {
+                    const opt = document.createElement('option');
+                    opt.value = option.value;
+                    opt.textContent = option.name;
+                    select.appendChild(opt);
+                });
+                propContainer.appendChild(select);
+            }
+            // TODO: Add handlers for other property types (bool, int, etc.)
+
+            propertiesFormContainer.appendChild(propContainer);
+        });
+
+        // Store the source name for the save handler
+        propertiesSaveButton.dataset.sourceName = sourceName;
+        propertiesModal.classList.remove('hidden');
+
+    } catch (error) {
+        console.error(`Failed to get source properties:`, error);
+        alert(`Error al obtener las propiedades: ${error.message}`);
+    }
+}
+
+propertiesCancelButton.addEventListener('click', () => {
+    propertiesModal.classList.add('hidden');
+});
+
+propertiesSaveButton.addEventListener('click', async () => {
+    const sourceName = propertiesSaveButton.dataset.sourceName;
+    if (!sourceName) return;
+
+    const newSettings = {};
+    const formElements = propertiesFormContainer.querySelectorAll('select, input');
+    formElements.forEach(el => {
+        // For now, we only handle select (string) values
+        if (el.tagName === 'SELECT') {
+            newSettings[el.name] = el.value;
+        }
+        // TODO: Handle other input types
+    });
+
+    try {
+        await window.core.updateSourceProperties(sourceName, newSettings);
+        console.log(`Updated properties for ${sourceName}`);
+        propertiesModal.classList.add('hidden');
+    } catch (error) {
+        console.error(`Failed to update properties:`, error);
+        alert(`Error al actualizar las propiedades: ${error.message}`);
+    }
+});
+
 
 // --- Render Loop & Main Execution ---
 
