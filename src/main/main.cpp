@@ -134,6 +134,55 @@ Napi::Value AddVideoCaptureSource(const Napi::CallbackInfo& info) {
     return env.Undefined();
 }
 
+// Function to add a browser source to the main scene
+Napi::Value AddBrowserSource(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 3) {
+        throw Napi::Error::New(env, "URL, width, and height are required.");
+    }
+
+    std::string url = info[0].As<Napi::String>();
+    int width = info[1].As<Napi::Number>().Int32Value();
+    int height = info[2].As<Napi::Number>().Int32Value();
+
+    if (!main_scene_weak) {
+        throw Napi::Error::New(env, "Main scene does not exist. Please create a scene first.");
+    }
+
+    obs_source_t *main_scene_source = obs_weak_source_get_source(main_scene_weak);
+    if (!main_scene_source) {
+        throw Napi::Error::New(env, "Main scene reference is no longer valid.");
+    }
+
+    obs_scene_t *scene = obs_scene_from_source(main_scene_source);
+
+    std::cout << "Adding browser source with URL: " << url << std::endl;
+
+    // Create settings for the browser source
+    obs_data_t *settings = obs_data_create();
+    obs_data_set_string(settings, "url", url.c_str());
+    obs_data_set_int(settings, "width", width);
+    obs_data_set_int(settings, "height", height);
+
+    obs_source_t *browser_source = obs_source_create("browser_source", "Browser", settings, nullptr);
+    obs_data_release(settings);
+
+    if (!browser_source) {
+        obs_source_release(main_scene_source);
+        throw Napi::Error::New(env, "Failed to create browser source.");
+    }
+
+    // Add the source to the scene
+    obs_scene_add(scene, browser_source);
+
+    // Release strong references
+    obs_source_release(browser_source);
+    obs_source_release(main_scene_source);
+
+    std::cout << "Browser source added." << std::endl;
+    return env.Undefined();
+}
 
 // Module initialization
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
@@ -142,6 +191,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("shutdown", Napi::Function::New(env, ShutdownOBS));
   exports.Set("createScene", Napi::Function::New(env, CreateSceneWithGameCapture));
   exports.Set("addVideoCapture", Napi::Function::New(env, AddVideoCaptureSource));
+  exports.Set("addBrowserSource", Napi::Function::New(env, AddBrowserSource));
   return exports;
 }
 
