@@ -10,5 +10,6 @@ contextBridge.exposeInMainWorld('core', {
   hello: () => core.hello(),
   startup: () => core.startup(),
   shutdown: () => core.shutdown(),
-  createScene: () => core.createScene()
+  createScene: () => core.createScene(),
+  addVideoCapture: () => core.addVideoCapture()
 });
