@@ -40,6 +40,13 @@ const chatInput = document.getElementById('chat-input');
 const chatSendButton = document.getElementById('chat-send-button');
 const chatConnectButton = document.getElementById('chat-connect-button');
 
+// Bot Settings constants
+const botEnabledCheckbox = document.getElementById('bot-enabled');
+const botCommandInput = document.getElementById('bot-command-input');
+const botResponseInput = document.getElementById('bot-response-input');
+const botAddCommandButton = document.getElementById('bot-add-command-button');
+const botCommandList = document.getElementById('bot-command-list');
+
 
 let animationFrameId;
 let previewScene = '';
@@ -48,6 +55,7 @@ let selectedSource = '';
 let streamSettings = { server: '', key: '' };
 let brandingSettings = { name: 'YourName', color: '#8a2be2', logo: '' };
 let twitchSettings = { channel: '', oauth: '' };
+let botSettings = { enabled: false, commands: [] };
 const transitionButton = document.getElementById('transition-button');
 
 // --- UI Update Functions ---
@@ -437,6 +445,7 @@ async function main() {
         loadSettings();
         setupSettingsModal();
         setupChat();
+        setupBotSettings();
 
         await updateSceneList();
         await updateOverlayGallery(); // Populate overlays on startup
@@ -523,6 +532,10 @@ function setupSettingsModal() {
         twitchChannelInput.value = twitchSettings.channel;
         twitchOauthInput.value = twitchSettings.oauth;
 
+        // Load bot settings into view
+        botEnabledCheckbox.checked = botSettings.enabled;
+        renderCommandList();
+
         settingsModal.classList.remove('hidden');
     });
 
@@ -573,6 +586,69 @@ function loadSettings() {
     if (savedTwitchSettings) {
         twitchSettings = JSON.parse(savedTwitchSettings);
     }
+    const savedBotSettings = localStorage.getItem('botSettings');
+    if (savedBotSettings) {
+        botSettings = JSON.parse(savedBotSettings);
+    }
+}
+
+// --- Bot Settings Logic ---
+function setupBotSettings() {
+    botEnabledCheckbox.checked = botSettings.enabled;
+    renderCommandList();
+
+    botEnabledCheckbox.addEventListener('change', () => {
+        botSettings.enabled = botEnabledCheckbox.checked;
+        saveBotSettings();
+    });
+
+    botAddCommandButton.addEventListener('click', () => {
+        const command = botCommandInput.value.trim();
+        const response = botResponseInput.value.trim();
+
+        if (command && response && command.startsWith('!')) {
+            if (botSettings.commands.some(c => c.command === command)) {
+                alert('Este comando ya existe.');
+                return;
+            }
+            botSettings.commands.push({ command, response });
+            botCommandInput.value = '';
+            botResponseInput.value = '';
+            saveBotSettings();
+            renderCommandList();
+        } else {
+            alert('Por favor, introduce un comando válido (debe empezar con "!") y una respuesta.');
+        }
+    });
+}
+
+function renderCommandList() {
+    botCommandList.innerHTML = '';
+    botSettings.commands.forEach((cmd, index) => {
+        const commandElement = document.createElement('div');
+        commandElement.className = 'flex items-center justify-between bg-gray-700 p-2 rounded';
+
+        const commandText = document.createElement('div');
+        commandText.innerHTML = `<span class="font-bold">${cmd.command}</span> &rarr; <span class="text-gray-300">${cmd.response}</span>`;
+
+        const removeButton = document.createElement('button');
+        removeButton.textContent = 'Eliminar';
+        removeButton.className = 'px-2 py-1 bg-red-600 text-xs rounded hover:bg-red-500';
+        removeButton.addEventListener('click', () => {
+            botSettings.commands.splice(index, 1);
+            saveBotSettings();
+            renderCommandList();
+        });
+
+        commandElement.appendChild(commandText);
+        commandElement.appendChild(removeButton);
+        botCommandList.appendChild(commandElement);
+    });
+}
+
+function saveBotSettings() {
+    localStorage.setItem('botSettings', JSON.stringify(botSettings));
+    window.core.updateBotSettings(botSettings);
 }
 
 

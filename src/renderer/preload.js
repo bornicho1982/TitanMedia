@@ -68,6 +68,7 @@ contextBridge.exposeInMainWorld('core', {
   chatDisconnect: () => ipcRenderer.invoke('chat-disconnect'),
   chatSendMessage: (channel, message) => ipcRenderer.invoke('chat-send-message', channel, message),
   onChatMessage: (callback) => ipcRenderer.on('chat-message', (_event, value) => callback(value)),
+  updateBotSettings: (settings) => ipcRenderer.send('update-bot-settings', settings),
 });
 
 contextBridge.exposeInMainWorld('platform', {
