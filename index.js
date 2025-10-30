@@ -1,120 +1,123 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
-const fs = require('fs');
-const tmi = require('tmi.js');
-const db = require('./src/main/database');
+const core = require('./build/Release/titan_media_core.node');
+const twitch = require('./twitch-integration');
 
-const addonPath = path.join(__dirname, 'build/Release/titan_media_core');
-const core = require(addonPath);
-
-let chatClient = null;
-let mainWindow = null;
+let mainWindow;
 
 function createWindow() {
-  mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 800,
-    webPreferences: {
-      preload: path.join(__dirname, 'src/renderer/preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false
-    }
-  });
+    mainWindow = new BrowserWindow({
+        width: 1600,
+        height: 900,
+        webPreferences: {
+            preload: path.join(__dirname, 'src', 'renderer', 'preload.js'),
+            contextIsolation: true,
+            nodeIntegration: false,
+        },
+    });
 
-  mainWindow.loadFile('src/renderer/index.html');
+    mainWindow.loadFile(path.join(__dirname, 'src', 'renderer', 'index.html'));
+    // mainWindow.webContents.openDevTools();
 }
 
-app.whenReady().then(async () => {
-  await db.connect();
-  await db.initialize();
+app.whenReady().then(() => {
+    createWindow();
 
-  createWindow();
-
-  app.on('activate', function () {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
+    app.on('activate', () => {
+        if (BrowserWindow.getAllWindows().length === 0) {
+            createWindow();
+        }
+    });
 });
 
-ipcMain.handle('db-load-scenes', async () => {
-    return await db.loadSceneCollection();
+app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') {
+        core.shutdown();
+        app.quit();
+    }
 });
 
-ipcMain.handle('select-logo', async (event) => {
-    const result = await dialog.showOpenDialog({
+// IPC Handlers
+ipcMain.handle('core-startup', () => core.startup());
+ipcMain.handle('core-shutdown', () => core.shutdown());
+ipcMain.handle('core-get-scene-list', () => core.getSceneList());
+ipcMain.handle('core-get-scene-sources', (event, sceneName) => core.getSceneSources(sceneName));
+ipcMain.handle('core-create-scene', (event, sceneName) => core.createScene(sceneName));
+ipcMain.handle('core-remove-scene', (event, sceneName) => core.removeScene(sceneName));
+ipcMain.handle('core-set-current-scene', (event, sceneName) => core.setCurrentScene(sceneName));
+ipcMain.handle('core-set-preview-scene', (event, sceneName) => core.setPreviewScene(sceneName));
+ipcMain.handle('core-transition', () => core.transition());
+ipcMain.handle('core-add-source', (event, sceneName, sourceId, sourceName) => core.addSource(sceneName, sourceId, sourceName));
+ipcMain.handle('core-remove-source', (event, sourceName) => core.removeSource(sourceName));
+ipcMain.handle('core-get-source-properties', (event, sourceName) => core.getSourceProperties(sourceName));
+ipcMain.handle('core-update-source-properties', (event, sourceName, properties) => core.updateSourceProperties(sourceName, properties));
+ipcMain.handle('core-start-streaming', () => core.startStreaming());
+ipcMain.handle('core-stop-streaming', () => core.stopStreaming());
+ipcMain.handle('core-is-streaming', () => core.isStreaming());
+ipcMain.handle('core-get-audio-levels', () => core.getAudioLevels());
+ipcMain.handle('core-is-source-muted', (event, sourceName) => core.isSourceMuted(sourceName));
+ipcMain.handle('core-set-source-muted', (event, sourceName, muted) => core.setSourceMuted(sourceName, muted));
+ipcMain.handle('dialog-select-logo', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({
         properties: ['openFile'],
-        filters: [
-            { name: 'Images', extensions: ['jpg', 'png', 'gif'] }
-        ]
+        filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif'] }]
     });
-
-    if (result.canceled) {
-        return null;
+    if (!canceled) {
+        return filePaths[0];
     }
-
-    const originalPath = result.filePaths[0];
-    const userDataPath = app.getPath('userData');
-    const brandingDir = path.join(userDataPath, 'branding');
-
-    if (!fs.existsSync(brandingDir)) {
-        fs.mkdirSync(brandingDir);
-    }
-
-    const newPath = path.join(brandingDir, path.basename(originalPath));
-    fs.copyFileSync(originalPath, newPath);
-
-    return newPath;
+    return null;
 });
 
-// --- Chat IPC Handlers ---
-ipcMain.handle('chat-connect', (event, options) => {
-    if (chatClient && chatClient.readyState() === 'OPEN') {
-        console.log("Chat client is already connected.");
-        return;
-    }
-
-    console.log("Connecting to Twitch chat with options:", options);
-    chatClient = new tmi.Client(options);
-
-    chatClient.on('message', (channel, tags, message, self) => {
-        if(self) return; // Ignore messages from the bot itself
-        mainWindow.webContents.send('chat-message', {
-            username: tags['display-name'],
-            message: message,
-            color: tags['color'] || '#FFFFFF' // Use Twitch color or default to white
-        });
-    });
-
-    chatClient.connect().catch(console.error);
-});
-
-ipcMain.handle('chat-disconnect', () => {
-    if (chatClient) {
-        chatClient.disconnect();
-        chatClient = null;
-        console.log("Disconnected from Twitch chat.");
-    }
-});
-
-ipcMain.handle('chat-send-message', (event, channel, message) => {
-    if (chatClient && chatClient.readyState() === 'OPEN') {
-        chatClient.say(channel, message);
-    } else {
-        console.error("Cannot send message, chat client is not connected.");
-    }
-});
-
-
-app.on('window-all-closed', async function () {
+ipcMain.handle('get-overlay-templates', () => {
+    const fs = require('fs');
+    const overlaysDir = path.join(__dirname, 'src', 'renderer', 'overlays');
     try {
-        const sceneData = core.getFullSceneData();
-        await db.saveSceneCollection(sceneData);
-    } catch (error) {
-        console.error("Failed to save scene configuration:", error);
-    }
+        const templateDirs = fs.readdirSync(overlaysDir, { withFileTypes: true })
+            .filter(dirent => dirent.isDirectory())
+            .map(dirent => dirent.name);
 
-    if (chatClient) {
-        chatClient.disconnect();
+        return templateDirs.map(dir => ({
+            name: dir.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+            url: `file://${path.join(overlaysDir, dir, 'index.html')}`,
+            thumbnail: `./overlays/${dir}/thumbnail.png`
+        }));
+    } catch (error) {
+        console.error("Error reading overlay templates:", error);
+        return [];
     }
-    await db.close();
-    if (process.platform !== 'darwin') app.quit();
+});
+
+
+// Twitch Integration IPC Handlers
+ipcMain.handle('twitch-login', async () => {
+    return twitch.login(mainWindow);
+});
+ipcMain.handle('twitch-logout', async () => {
+    await twitch.logout();
+});
+ipcMain.handle('twitch-get-user', async () => {
+    return twitch.getCurrentUser();
+});
+ipcMain.handle('twitch-get-channel-info', async () => {
+    return twitch.getChannelInfo();
+});
+ipcMain.handle('twitch-update-channel-info', async (event, title, category) => {
+    return twitch.updateChannelInfo(title, category);
+});
+
+// Chat IPC Handlers
+ipcMain.on('chat-connect', () => {
+    twitch.connectChat();
+});
+ipcMain.on('chat-disconnect', () => {
+    twitch.disconnectChat();
+});
+ipcMain.on('chat-send-message', (event, channel, message) => {
+    twitch.sendMessage(channel, message);
+});
+
+twitch.onChatMessage((username, message, color) => {
+    if (mainWindow && mainWindow.webContents) {
+        mainWindow.webContents.send('chat-message', { username, message, color });
+    }
 });

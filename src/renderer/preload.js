@@ -1,80 +1,55 @@
 const { contextBridge, ipcRenderer } = require('electron');
-const path = require('path');
-const fs = require('fs');
-
-const addonPath = path.join(__dirname, '../../build/Release/titan_media_core');
-const core = require(addonPath);
 
 contextBridge.exposeInMainWorld('core', {
-  // Core lifecycle
-  startup: () => core.startup(),
-  shutdown: () => core.shutdown(),
+    // Core Lifecycle
+    startup: () => ipcRenderer.invoke('core-startup'),
+    shutdown: () => ipcRenderer.invoke('core-shutdown'),
 
-  // Scene Serialization
-  getFullSceneData: () => core.getFullSceneData(),
-  loadFullSceneData: (data) => core.loadFullSceneData(data),
+    // Scene Management
+    getSceneList: () => ipcRenderer.invoke('core-get-scene-list'),
+    getSceneSources: (sceneName) => ipcRenderer.invoke('core-get-scene-sources', sceneName),
+    createScene: (sceneName) => ipcRenderer.invoke('core-create-scene', sceneName),
+    removeScene: (sceneName) => ipcRenderer.invoke('core-remove-scene', sceneName),
+    setCurrentScene: (sceneName) => ipcRenderer.invoke('core-set-current-scene', sceneName),
 
-  // Video Rendering
-  getLatestFrame: () => core.getLatestFrame(),
+    // Studio Mode
+    setPreviewScene: (sceneName) => ipcRenderer.invoke('core-set-preview-scene', sceneName),
+    transition: () => ipcRenderer.invoke('core-transition'),
 
-  // Scene Management
-  createScene: (name) => core.createScene(name),
-  getSceneList: () => core.getSceneList(),
+    // Source Management
+    addSource: (sceneName, sourceId, sourceName) => ipcRenderer.invoke('core-add-source', sceneName, sourceId, sourceName),
+    removeSource: (sourceName) => ipcRenderer.invoke('core-remove-source', sourceName),
+    getSourceProperties: (sourceName) => ipcRenderer.invoke('core-get-source-properties', sourceName),
+    updateSourceProperties: (sourceName, properties) => ipcRenderer.invoke('core-update-source-properties', sourceName, properties),
 
-  // Studio Mode
-  setPreviewScene: (sceneName) => core.setPreviewScene(sceneName),
-  executeTransition: () => core.executeTransition(),
-  getProgramSceneName: () => core.getProgramSceneName(),
-  getSceneSources: (sceneName) => core.getSceneSources(sceneName),
+    // Output Management
+    startStreaming: () => ipcRenderer.invoke('core-start-streaming'),
+    stopStreaming: () => ipcRenderer.invoke('core-stop-streaming'),
+    isStreaming: () => ipcRenderer.invoke('core-is-streaming'),
 
-  // Source Management
-  addSource: (sceneName, sourceId, sourceName) => core.addSource(sceneName, sourceId, sourceName),
-  removeSource: (sceneName, sourceName) => core.removeSource(sceneName, sourceName),
-  getSourceProperties: (sourceName) => core.getSourceProperties(sourceName),
-  updateSourceProperties: (sourceName, properties) => core.updateSourceProperties(sourceName, properties),
+    // Audio Management
+    getAudioLevels: () => ipcRenderer.invoke('core-get-audio-levels'),
+    isSourceMuted: (sourceName) => ipcRenderer.invoke('core-is-source-muted', sourceName),
+    setSourceMuted: (sourceName, muted) => ipcRenderer.invoke('core-set-source-muted', sourceName, muted),
 
-  // Audio Management
-  setSourceMuted: (sourceName, muted) => core.setSourceMuted(sourceName, muted),
-  isSourceMuted: (sourceName) => core.isSourceMuted(sourceName),
-  getAudioLevels: () => core.getAudioLevels(),
+    // Dialogs
+    selectLogo: () => ipcRenderer.invoke('dialog-select-logo'),
 
-  // Output Management
-  startStreaming: (server, key) => core.startStreaming(server, key),
-  stopStreaming: () => core.stopStreaming(),
-  isStreaming: () => core.isStreaming(),
-  startRecording: () => core.startRecording(),
-  stopRecording: () => core.stopRecording(),
-  isRecording: () => core.isRecording(),
+    // Overlays
+    getOverlayTemplates: () => ipcRenderer.invoke('get-overlay-templates'),
 
-  // Overlay Management
-  getOverlayTemplates: () => {
-    const overlaysDir = path.join(__dirname, 'overlays');
-    try {
-      const templateDirs = fs.readdirSync(overlaysDir, { withFileTypes: true })
-        .filter(dirent => dirent.isDirectory())
-        .map(dirent => dirent.name);
+    // Twitch Integration
+    twitchLogin: () => ipcRenderer.invoke('twitch-login'),
+    twitchLogout: () => ipcRenderer.invoke('twitch-logout'),
+    getTwitchUser: () => ipcRenderer.invoke('twitch-get-user'),
+    getChannelInfo: () => ipcRenderer.invoke('twitch-get-channel-info'),
+    updateChannelInfo: (title, category) => ipcRenderer.invoke('twitch-update-channel-info', title, category),
 
-      return templateDirs.map(dir => ({
-        name: dir.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-        url: `file://${path.join(overlaysDir, dir, 'index.html')}`,
-        thumbnail: `./overlays/${dir}/thumbnail.png`
-      }));
-    } catch (error) {
-      console.error("Error reading overlay templates:", error);
-      return [];
-    }
-  },
-
-  selectLogo: () => ipcRenderer.invoke('select-logo'),
-
-  // Chat Management
-  chatConnect: (options) => ipcRenderer.invoke('chat-connect', options),
-  chatDisconnect: () => ipcRenderer.invoke('chat-disconnect'),
-  chatSendMessage: (channel, message) => ipcRenderer.invoke('chat-send-message', channel, message),
-  onChatMessage: (callback) => ipcRenderer.on('chat-message', (_event, value) => callback(value)),
-
-  // Database
-  loadScenes: () => ipcRenderer.invoke('db-load-scenes'),
+    // Chat
+    onChatMessage: (callback) => ipcRenderer.on('chat-message', (_event, value) => callback(value)),
+    chatConnect: () => ipcRenderer.send('chat-connect'),
+    chatDisconnect: () => ipcRenderer.send('chat-disconnect'),
+    chatSendMessage: (channel, message) => ipcRenderer.send('chat-send-message', channel, message)
 });
 
 contextBridge.exposeInMainWorld('platform', {
