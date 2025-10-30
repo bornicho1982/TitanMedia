@@ -29,6 +29,7 @@ const streamerNameInput = document.getElementById('streamer-name');
 const brandColorInput = document.getElementById('brand-color');
 const logoSelectButton = document.getElementById('logo-select-button');
 const logoPathElement = document.getElementById('logo-path');
+const enableAlertsCheckbox = document.getElementById('enable-alerts');
 
 // Twitch Accounts constants
 const twitchLoginButton = document.getElementById('twitch-login-button');
@@ -56,6 +57,7 @@ let programScene = '';
 let selectedSource = '';
 let streamSettings = { server: '', key: '' };
 let brandingSettings = { name: 'YourName', color: '#8a2be2', logo: '' };
+let alertSettings = { enabled: false };
 let twitchUser = null;
 const transitionButton = document.getElementById('transition-button');
 
@@ -447,6 +449,7 @@ async function main() {
         setupSettingsModal();
         setupTwitchAuth();
         setupStreamManager();
+        setupAlerts(); // New function for Alerts
         setupChat();
 
         const savedScenes = await window.core.loadScenes();
@@ -551,7 +554,10 @@ function setupSettingsModal() {
         brandingSettings.color = brandColorInput.value;
         localStorage.setItem('brandingSettings', JSON.stringify(brandingSettings));
 
-        console.log("Settings saved:", { streamSettings, brandingSettings });
+        alertSettings.enabled = enableAlertsCheckbox.checked;
+        localStorage.setItem('alertSettings', JSON.stringify(alertSettings));
+
+        console.log("Settings saved:", { streamSettings, brandingSettings, alertSettings });
         settingsModal.classList.add('hidden');
     });
 
@@ -573,6 +579,10 @@ function loadSettings() {
     if (savedBrandingSettings) {
         brandingSettings = JSON.parse(savedBrandingSettings);
     }
+    const savedAlertSettings = localStorage.getItem('alertSettings');
+    if (savedAlertSettings) {
+        alertSettings = JSON.parse(savedAlertSettings);
+    }
 }
 
 // --- Twitch, Stream Manager & Chat Logic ---
@@ -588,6 +598,7 @@ function updateTwitchAuthStateUI() {
         twitchLoggedOutView.classList.remove('hidden');
         streamManagerPanel.classList.add('hidden'); // Hide manager
     }
+    enableAlertsCheckbox.checked = alertSettings.enabled;
 }
 
 async function loadStreamInfo() {
@@ -757,3 +768,79 @@ async function updateControlState() {
 }
 
 setInterval(updateControlState, 1000); // Check status every second
+
+// --- Alerts Logic ---
+
+const ALERT_SOURCE_NAME = "TitanMedia Alert Box";
+let alertTimeoutId = null;
+
+async function triggerAlert(username) {
+    if (!alertSettings.enabled || !programScene) return;
+
+    try {
+        const alertOverlay = await window.core.getOverlayTemplates().then(o => o.find(t => t.name === 'Basic Alert'));
+        if (!alertOverlay) {
+            console.error("Basic Alert overlay template not found.");
+            return;
+        }
+
+        // 1. Update the URL with the new username and a timestamp to force reload
+        const newUrl = new URL(alertOverlay.url);
+        newUrl.searchParams.set('username', username);
+        newUrl.searchParams.set('t', Date.now());
+
+        await window.core.updateSourceProperties(ALERT_SOURCE_NAME, { url: newUrl.href });
+
+        // 2. Show the source
+        await window.core.setSceneItemVisible(programScene, ALERT_SOURCE_NAME, true);
+
+        // 3. Hide the source after a delay
+        if (alertTimeoutId) clearTimeout(alertTimeoutId);
+        alertTimeoutId = setTimeout(() => {
+            window.core.setSceneItemVisible(programScene, ALERT_SOURCE_NAME, false);
+        }, 6000); // Hide after 6 seconds
+
+    } catch (error) {
+        console.error("Failed to trigger alert:", error);
+    }
+}
+
+
+function setupAlerts() {
+    // Listen for incoming follow events
+    window.core.onTwitchFollow(({ username }) => {
+        console.log(`Received follow event for ${username}. Triggering alert.`);
+        triggerAlert(username);
+    });
+
+    // Handle the user enabling/disabling alerts
+    enableAlertsCheckbox.addEventListener('change', async () => {
+        alertSettings.enabled = enableAlertsCheckbox.checked;
+        localStorage.setItem('alertSettings', JSON.stringify(alertSettings));
+
+        if (!programScene && alertSettings.enabled) {
+            alert("Por favor, selecciona una escena de programa (en vivo) antes de activar las alertas.");
+            enableAlertsCheckbox.checked = false; // Revert checkbox
+            return;
+        }
+
+        try {
+            if (alertSettings.enabled) {
+                const alertOverlay = await window.core.getOverlayTemplates().then(o => o.find(t => t.name === 'Basic Alert'));
+                await window.core.addSource(programScene, 'browser_source', ALERT_SOURCE_NAME);
+                await window.core.updateSourceProperties(ALERT_SOURCE_NAME, {
+                    url: alertOverlay.url,
+                    width: 1920,
+                    height: 1080
+                });
+                await window.core.setSceneItemVisible(programScene, ALERT_SOURCE_NAME, false);
+                console.log("Alert source added to program scene.");
+            } else {
+                await window.core.removeSource(programScene, ALERT_SOURCE_NAME);
+                console.log("Alert source removed from program scene.");
+            }
+        } catch (error) {
+            console.warn("Could not add/remove alert source:", error.message);
+        }
+    });
+}

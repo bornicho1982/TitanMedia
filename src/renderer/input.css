@@ -21,3 +21,7 @@
 .chat-message .message-content {
     @apply ml-2;
 }
+input:checked ~ .dot {
+  transform: translateX(100%);
+  background-color: #8a2be2; /* Purple to match brand */
+}

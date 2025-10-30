@@ -719,6 +719,34 @@ Napi::Value LoadFullSceneData(const Napi::CallbackInfo& info) {
 
     return env.Undefined();
 }
+
+Napi::Value SetSceneItemVisible(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 3) {
+        throw Napi::Error::New(env, "Requires 3 arguments: sceneName, sourceName, visible");
+    }
+
+    std::string scene_name = info[0].As<Napi::String>();
+    std::string source_name = info[1].As<Napi::String>();
+    bool visible = info[2].As<Napi::Boolean>();
+
+    obs_source_t* scene_source = obs_get_source_by_name(scene_name.c_str());
+    if (!scene_source) {
+        // It's not an error if the scene doesn't exist, just ignore.
+        return env.Undefined();
+    }
+
+    obs_scene_t* scene = obs_scene_from_source(scene_source);
+    obs_sceneitem_t* scene_item = obs_scene_find_source_recursive(scene, source_name.c_str());
+
+    if (scene_item) {
+        obs_sceneitem_set_visible(scene_item, visible);
+        obs_sceneitem_release(scene_item);
+    }
+
+    obs_source_release(scene_source);
+    return env.Undefined();
+}
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("startup", Napi::Function::New(env, StartupOBS));
   exports.Set("shutdown", Napi::Function::New(env, ShutdownOBS));
@@ -750,6 +778,9 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   // --- Scene Serialization ---
   exports.Set("getFullSceneData", Napi::Function::New(env, GetFullSceneData));
   exports.Set("loadFullSceneData", Napi::Function::New(env, LoadFullSceneData));
+
+  // --- Source Visibility ---
+  exports.Set("setSceneItemVisible", Napi::Function::New(env, SetSceneItemVisible));
 
 
   return exports;
