@@ -325,6 +325,41 @@ Napi::Value GetAudioLevels(const Napi::CallbackInfo& info) {
     return levels;
 }
 
+Napi::Value GetSourceProperties(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 1) throw Napi::Error::New(env, "Requires 1 argument: sourceName");
+    std::string source_name = info[0].As<Napi::String>();
+    obs_source_t* source = obs_get_source_by_name(source_name.c_str());
+    if (!source) return env.Null();
+    obs_properties_t* properties = obs_source_properties(source);
+    obs_source_release(source);
+    if (!properties) return env.Null();
+    Napi::Array result = Napi::Array::New(env);
+    obs_property_t* prop = obs_properties_first(properties);
+    while (prop) {
+        Napi::Object prop_obj = Napi::Object::New(env);
+        prop_obj.Set("name", obs_property_name(prop));
+        prop_obj.Set("description", obs_property_description(prop));
+        obs_property_type type = obs_property_get_type(prop);
+        prop_obj.Set("type", (int)type);
+        if (type == OBS_PROPERTY_LIST) {
+            Napi::Array options = Napi::Array::New(env);
+            size_t count = obs_property_list_item_count(prop);
+            for (size_t i = 0; i < count; ++i) {
+                Napi::Object option = Napi::Object::New(env);
+                option.Set("name", obs_property_list_item_name(prop, i));
+                option.Set("value", obs_property_list_item_string(prop, i));
+                options.Set(i, option);
+            }
+            prop_obj.Set("options", options);
+        }
+        result.Set(result.Length(), prop_obj);
+        obs_property_next(&prop);
+    }
+    obs_properties_destroy(properties);
+    return result;
+}
+
 Napi::Value UpdateSourceProperties(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     if (info.Length() < 2) throw Napi::Error::New(env, "Requires 2 arguments: sourceName, propertiesObject");
@@ -443,6 +478,7 @@ Napi::Value IsRecording(const Napi::CallbackInfo& info) {
     return Napi::Boolean::New(env, g_record_output && obs_output_active(g_record_output));
 }
 
+// --- Scene Serialization ---
 std::string ObsDataToJsonString(obs_data_t *settings) {
     if (!settings) return "{}";
     const char *json_string = obs_data_get_json(settings);
@@ -528,95 +564,6 @@ Napi::Value LoadFullSceneData(const Napi::CallbackInfo& info) {
     return env.Undefined();
 }
 
-Napi::Value SetSceneItemVisible(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
-    if (info.Length() < 3) throw Napi::Error::New(env, "Requires 3 arguments: sceneName, sourceName, visible");
-    std::string scene_name = info[0].As<Napi::String>();
-    std::string source_name = info[1].As<Napi::String>();
-    bool visible = info[2].As<Napi::Boolean>();
-    obs_source_t* scene_source = obs_get_source_by_name(scene_name.c_str());
-    if (!scene_source) return env.Undefined();
-    obs_scene_t* scene = obs_scene_from_source(scene_source);
-    obs_sceneitem_t* scene_item = obs_scene_find_source_recursive(scene, source_name.c_str());
-    if (scene_item) {
-        obs_sceneitem_set_visible(scene_item, visible);
-        obs_sceneitem_release(scene_item);
-    }
-    obs_source_release(scene_source);
-    return env.Undefined();
-}
-
-obs_data_t* get_source_settings(obs_source_t* source) {
-    return obs_source_get_settings(source);
-}
-
-Napi::Value GetSourceProperties(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
-    if (info.Length() < 1) throw Napi::Error::New(env, "Requires 1 argument: sourceName");
-    std::string source_name = info[0].As<Napi::String>();
-    obs_source_t* source = obs_get_source_by_name(source_name.c_str());
-    if (!source) return env.Null();
-    obs_data_t* settings = get_source_settings(source);
-    obs_properties_t* properties = obs_source_properties(source);
-    obs_source_release(source);
-    if (!properties) {
-        obs_data_release(settings);
-        return env.Null();
-    }
-    Napi::Array result = Napi::Array::New(env);
-    obs_property_t* prop = obs_properties_first(properties);
-    while (prop) {
-        Napi::Object prop_obj = Napi::Object::New(env);
-        const char* prop_name = obs_property_name(prop);
-        prop_obj.Set("name", prop_name);
-        prop_obj.Set("description", obs_property_description(prop));
-        obs_property_type type = obs_property_get_type(prop);
-        prop_obj.Set("type", (int)type);
-        switch(type) {
-            case OBS_PROPERTY_BOOL:
-                prop_obj.Set("value", obs_data_get_bool(settings, prop_name));
-                break;
-            case OBS_PROPERTY_INT:
-                prop_obj.Set("value", obs_data_get_int(settings, prop_name));
-                prop_obj.Set("min", obs_property_int_min(prop));
-                prop_obj.Set("max", obs_property_int_max(prop));
-                prop_obj.Set("step", obs_property_int_step(prop));
-                break;
-            case OBS_PROPERTY_FLOAT:
-                prop_obj.Set("value", obs_data_get_double(settings, prop_name));
-                prop_obj.Set("min", obs_property_float_min(prop));
-                prop_obj.Set("max", obs_property_float_max(prop));
-                prop_obj.Set("step", obs_property_float_step(prop));
-                break;
-            case OBS_PROPERTY_TEXT:
-                prop_obj.Set("value", obs_data_get_string(settings, prop_name));
-                break;
-            case OBS_PROPERTY_COLOR:
-                prop_obj.Set("value", (int)obs_data_get_int(settings, prop_name));
-                break;
-            case OBS_PROPERTY_LIST: {
-                Napi::Array options = Napi::Array::New(env);
-                size_t count = obs_property_list_item_count(prop);
-                for (size_t i = 0; i < count; ++i) {
-                    Napi::Object option = Napi::Object::New(env);
-                    option.Set("name", obs_property_list_item_name(prop, i));
-                    option.Set("value", obs_property_list_item_string(prop, i));
-                    options.Set(i, option);
-                }
-                prop_obj.Set("options", options);
-                prop_obj.Set("value", obs_data_get_string(settings, prop_name));
-                break;
-            }
-            default: break;
-        }
-        result.Set(result.Length(), prop_obj);
-        obs_property_next(&prop);
-    }
-    obs_properties_destroy(properties);
-    obs_data_release(settings);
-    return result;
-}
-
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("startup", Napi::Function::New(env, StartupOBS));
   exports.Set("shutdown", Napi::Function::New(env, ShutdownOBS));
@@ -642,7 +589,6 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("isRecording", Napi::Function::New(env, IsRecording));
   exports.Set("getFullSceneData", Napi::Function::New(env, GetFullSceneData));
   exports.Set("loadFullSceneData", Napi::Function::New(env, LoadFullSceneData));
-  exports.Set("setSceneItemVisible", Napi::Function::New(env, SetSceneItemVisible));
   return exports;
 }
 

@@ -33,10 +33,6 @@
     "tailwindcss": "^4.1.16"
   },
   "dependencies": {
-    "@twurple/api": "^7.4.0",
-    "@twurple/auth": "^7.4.0",
-    "@twurple/eventsub-ws": "^7.4.0",
-    "axios": "^1.13.1",
     "extract-zip": "^2.0.1",
     "node-addon-api": "^8.5.0",
     "sqlite3": "^5.1.7",

@@ -29,20 +29,10 @@ const streamerNameInput = document.getElementById('streamer-name');
 const brandColorInput = document.getElementById('brand-color');
 const logoSelectButton = document.getElementById('logo-select-button');
 const logoPathElement = document.getElementById('logo-path');
-const enableAlertsCheckbox = document.getElementById('enable-alerts');
 
 // Twitch Accounts constants
-const twitchLoginButton = document.getElementById('twitch-login-button');
-const twitchLogoutButton = document.getElementById('twitch-logout-button');
-const twitchLoggedOutView = document.getElementById('twitch-logged-out-view');
-const twitchLoggedInView = document.getElementById('twitch-logged-in-view');
-const twitchUsernameSpan = document.getElementById('twitch-username');
-
-// Stream Manager constants
-const streamManagerPanel = document.getElementById('stream-manager-panel');
-const streamTitleInput = document.getElementById('stream-title');
-const streamCategoryInput = document.getElementById('stream-category');
-const updateStreamInfoButton = document.getElementById('update-stream-info-button');
+const twitchChannelInput = document.getElementById('twitch-channel');
+const twitchOauthInput = document.getElementById('twitch-oauth');
 
 // Chat Panel constants
 const chatMessages = document.getElementById('chat-messages');
@@ -57,8 +47,7 @@ let programScene = '';
 let selectedSource = '';
 let streamSettings = { server: '', key: '' };
 let brandingSettings = { name: 'YourName', color: '#8a2be2', logo: '' };
-let alertSettings = { enabled: false };
-let twitchUser = null;
+let twitchSettings = { channel: '', oauth: '' };
 const transitionButton = document.getElementById('transition-button');
 
 // --- UI Update Functions ---
@@ -317,95 +306,46 @@ sourceMenu.addEventListener('click', async (event) => {
 // OBS Property Types Enum (for clarity)
 const OBS_PROPERTY_LIST = 4;
 
-// OBS Property Types Enum (for clarity, must match obs-properties.h)
-const OBS_PROPERTY_BOOL = 0;
-const OBS_PROPERTY_INT = 1;
-const OBS_PROPERTY_FLOAT = 2;
-const OBS_PROPERTY_TEXT = 3;
-const OBS_PROPERTY_LIST = 4;
-const OBS_PROPERTY_COLOR = 7;
-
 async function openPropertiesModal(sourceName) {
     propertiesTitle.textContent = `Propiedades de: ${sourceName}`;
-    propertiesFormContainer.innerHTML = '';
+    propertiesFormContainer.innerHTML = ''; // Clear old form
 
     try {
         const properties = await window.core.getSourceProperties(sourceName);
-        if (!properties || properties.length === 0) {
+        if (!properties) {
             propertiesFormContainer.innerHTML = '<p>Esta fuente no tiene propiedades configurables.</p>';
-        } else {
-            properties.forEach(prop => {
-                const propContainer = document.createElement('div');
-                propContainer.className = 'mb-4';
-                const label = document.createElement('label');
-                label.textContent = prop.description;
-                label.className = 'block mb-1 text-sm font-medium';
-                propContainer.appendChild(label);
-
-                let control;
-                switch (prop.type) {
-                    case OBS_PROPERTY_BOOL:
-                        control = document.createElement('input');
-                        control.type = 'checkbox';
-                        control.name = prop.name;
-                        control.checked = prop.value;
-                        control.className = 'h-6 w-6 rounded text-purple-600 bg-gray-700 border-gray-600 focus:ring-purple-500';
-                        break;
-                    case OBS_PROPERTY_INT:
-                    case OBS_PROPERTY_FLOAT:
-                        control = document.createElement('input');
-                        control.type = 'range';
-                        control.name = prop.name;
-                        control.min = prop.min;
-                        control.max = prop.max;
-                        control.step = prop.step;
-                        control.value = prop.value;
-                        control.className = 'w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer';
-                        // Add a label to show the current value
-                        const valueLabel = document.createElement('span');
-                        valueLabel.textContent = ` (${prop.value})`;
-                        valueLabel.className = 'text-xs text-gray-400';
-                        label.appendChild(valueLabel);
-                        control.addEventListener('input', () => valueLabel.textContent = ` (${control.value})`);
-                        break;
-                    case OBS_PROPERTY_TEXT:
-                        control = document.createElement('input');
-                        control.type = 'text';
-                        control.name = prop.name;
-                        control.value = prop.value;
-                        control.className = 'bg-gray-700 border border-gray-600 rounded w-full p-2';
-                        break;
-                    case OBS_PROPERTY_COLOR:
-                        control = document.createElement('input');
-                        control.type = 'color';
-                        control.name = prop.name;
-                        // Convert integer color to hex
-                        control.value = `#${(prop.value & 0xFFFFFF).toString(16).padStart(6, '0')}`;
-                        control.className = 'bg-gray-700 border border-gray-600 rounded h-10 w-full p-1';
-                        break;
-                    case OBS_PROPERTY_LIST:
-                        control = document.createElement('select');
-                        control.name = prop.name;
-                        control.className = 'bg-gray-700 border border-gray-600 rounded w-full p-2';
-                        prop.options.forEach(option => {
-                            const opt = document.createElement('option');
-                            opt.value = option.value;
-                            opt.textContent = option.name;
-                            if (option.value === prop.value) {
-                                opt.selected = true;
-                            }
-                            control.appendChild(opt);
-                        });
-                        break;
-                }
-                if (control) {
-                    propContainer.appendChild(control);
-                }
-                propertiesFormContainer.appendChild(propContainer);
-            });
+            propertiesModal.classList.remove('hidden');
+            return;
         }
+
+        properties.forEach(prop => {
+            const propContainer = document.createElement('div');
+            const label = document.createElement('label');
+            label.textContent = prop.description;
+            label.className = 'block mb-1 text-sm font-medium';
+            propContainer.appendChild(label);
+
+            if (prop.type === OBS_PROPERTY_LIST) {
+                const select = document.createElement('select');
+                select.name = prop.name;
+                select.className = 'bg-gray-700 border border-gray-600 rounded w-full p-2';
+                prop.options.forEach(option => {
+                    const opt = document.createElement('option');
+                    opt.value = option.value;
+                    opt.textContent = option.name;
+                    select.appendChild(opt);
+                });
+                propContainer.appendChild(select);
+            }
+            // TODO: Add handlers for other property types (bool, int, etc.)
+
+            propertiesFormContainer.appendChild(propContainer);
+        });
+
+        // Store the source name for the save handler
         propertiesSaveButton.dataset.sourceName = sourceName;
         propertiesModal.classList.remove('hidden');
+
     } catch (error) {
         console.error(`Failed to get source properties:`, error);
         alert(`Error al obtener las propiedades: ${error.message}`);
@@ -422,35 +362,18 @@ propertiesSaveButton.addEventListener('click', async () => {
 
     const newSettings = {};
     const formElements = propertiesFormContainer.querySelectorAll('select, input');
-
     formElements.forEach(el => {
-        const name = el.name;
-        switch (el.type) {
-            case 'checkbox':
-                newSettings[name] = el.checked;
-                break;
-            case 'range':
-            case 'number':
-                newSettings[name] = parseFloat(el.value);
-                break;
-            case 'color':
-                // Convert hex color #RRGGBB to an integer
-                newSettings[name] = parseInt(el.value.substring(1), 16);
-                break;
-            case 'text':
-            case 'select-one':
-            default:
-                newSettings[name] = el.value;
-                break;
+        // For now, we only handle select (string) values
+        if (el.tagName === 'SELECT') {
+            newSettings[el.name] = el.value;
         }
+        // TODO: Handle other input types
     });
 
     try {
         await window.core.updateSourceProperties(sourceName, newSettings);
-        console.log(`Updated properties for ${sourceName}`, newSettings);
+        console.log(`Updated properties for ${sourceName}`);
         propertiesModal.classList.add('hidden');
-        // A quick refresh of the source list can be good if names change, etc.
-        updateSourceList(activeScene);
     } catch (error) {
         console.error(`Failed to update properties:`, error);
         alert(`Error al actualizar las propiedades: ${error.message}`);
@@ -513,9 +436,6 @@ async function main() {
 
         loadSettings();
         setupSettingsModal();
-        setupTwitchAuth();
-        setupStreamManager();
-        setupAlerts(); // New function for Alerts
         setupChat();
 
         const savedScenes = await window.core.loadScenes();
@@ -586,24 +506,32 @@ function setupSettingsModal() {
 
     tabs.forEach(tab => {
         tab.addEventListener('click', () => {
+            // Update active tab styles
             tabs.forEach(t => t.classList.remove('active-tab'));
             tab.classList.add('active-tab');
 
+            // Show/hide content
             const tabName = tab.dataset.tab;
             tabContents.forEach(content => {
-                content.classList.toggle('hidden', content.id !== `tab-content-${tabName}`);
+                if (content.id === `tab-content-${tabName}`) {
+                    content.classList.remove('hidden');
+                } else {
+                    content.classList.add('hidden');
+                }
             });
         });
     });
 
     settingsButton.addEventListener('click', () => {
+        // Load current settings into the modal
         rtmpServerInput.value = streamSettings.server;
         streamKeyInput.value = streamSettings.key;
         streamerNameInput.value = brandingSettings.name;
         brandColorInput.value = brandingSettings.color;
         logoPathElement.textContent = brandingSettings.logo || 'Ningún archivo seleccionado.';
+        twitchChannelInput.value = twitchSettings.channel;
+        twitchOauthInput.value = twitchSettings.oauth;
 
-        updateTwitchAuthStateUI();
         settingsModal.classList.remove('hidden');
     });
 
@@ -612,18 +540,23 @@ function setupSettingsModal() {
     });
 
     settingsSaveButton.addEventListener('click', () => {
+        // Save stream settings
         streamSettings.server = rtmpServerInput.value;
         streamSettings.key = streamKeyInput.value;
         localStorage.setItem('streamSettings', JSON.stringify(streamSettings));
 
+        // Save branding settings
         brandingSettings.name = streamerNameInput.value;
         brandingSettings.color = brandColorInput.value;
+        // The logo path is saved by the logo selection logic
         localStorage.setItem('brandingSettings', JSON.stringify(brandingSettings));
 
-        alertSettings.enabled = enableAlertsCheckbox.checked;
-        localStorage.setItem('alertSettings', JSON.stringify(alertSettings));
+        // Save Twitch settings
+        twitchSettings.channel = twitchChannelInput.value;
+        twitchSettings.oauth = twitchOauthInput.value;
+        localStorage.setItem('twitchSettings', JSON.stringify(twitchSettings));
 
-        console.log("Settings saved:", { streamSettings, brandingSettings, alertSettings });
+        console.log("Settings saved:", { streamSettings, brandingSettings, twitchSettings });
         settingsModal.classList.add('hidden');
     });
 
@@ -645,116 +578,51 @@ function loadSettings() {
     if (savedBrandingSettings) {
         brandingSettings = JSON.parse(savedBrandingSettings);
     }
-    const savedAlertSettings = localStorage.getItem('alertSettings');
-    if (savedAlertSettings) {
-        alertSettings = JSON.parse(savedAlertSettings);
+    const savedTwitchSettings = localStorage.getItem('twitchSettings');
+    if (savedTwitchSettings) {
+        twitchSettings = JSON.parse(savedTwitchSettings);
     }
 }
 
-// --- Twitch, Stream Manager & Chat Logic ---
 
-function updateTwitchAuthStateUI() {
-    if (twitchUser) {
-        twitchLoggedInView.classList.remove('hidden');
-        twitchLoggedOutView.classList.add('hidden');
-        twitchUsernameSpan.textContent = twitchUser.username;
-        streamManagerPanel.classList.remove('hidden'); // Show manager
-    } else {
-        twitchLoggedInView.classList.add('hidden');
-        twitchLoggedOutView.classList.remove('hidden');
-        streamManagerPanel.classList.add('hidden'); // Hide manager
-    }
-    enableAlertsCheckbox.checked = alertSettings.enabled;
-}
-
-async function loadStreamInfo() {
-    try {
-        const info = await window.core.getChannelInfo();
-        streamTitleInput.value = info.title;
-        streamCategoryInput.value = info.category;
-    } catch (error) {
-        console.error("Failed to load stream info:", error);
-    }
-}
-
-async function setupTwitchAuth() {
-    twitchUser = await window.core.getTwitchUser();
-    updateTwitchAuthStateUI();
-    if (twitchUser) {
-        loadStreamInfo(); // Load info on startup if logged in
-    }
-
-    twitchLoginButton.addEventListener('click', async () => {
-        twitchUser = await window.core.twitchLogin();
-        updateTwitchAuthStateUI();
-        if (twitchUser) {
-            console.log(`Logged in as ${twitchUser.username}`);
-            loadStreamInfo(); // Load info after login
-        } else {
-            console.log("Login flow was cancelled.");
-        }
-    });
-
-    twitchLogoutButton.addEventListener('click', async () => {
-        await window.core.twitchLogout();
-        twitchUser = null;
-        updateTwitchAuthStateUI();
-        streamTitleInput.value = '';
-        streamCategoryInput.value = '';
-        console.log("Logged out.");
-    });
-}
-
-function setupStreamManager() {
-    updateStreamInfoButton.addEventListener('click', async () => {
-        const title = streamTitleInput.value;
-        const category = streamCategoryInput.value;
-
-        if (!title || !category) {
-            alert("El título y la categoría no pueden estar vacíos.");
-            return;
-        }
-
-        try {
-            updateStreamInfoButton.textContent = "Actualizando...";
-            updateStreamInfoButton.disabled = true;
-            await window.core.updateChannelInfo(title, category);
-            alert("Información del stream actualizada con éxito.");
-        } catch (error) {
-            console.error("Failed to update stream info:", error);
-            alert(`Error al actualizar: ${error.message}`);
-        } finally {
-            updateStreamInfoButton.textContent = "Actualizar";
-            updateStreamInfoButton.disabled = false;
-        }
-    });
-}
-
+// --- Chat Logic ---
 function setupChat() {
     let isConnected = false;
 
     chatConnectButton.addEventListener('click', () => {
         if (isConnected) {
+            // Disconnect
             window.core.chatDisconnect();
             chatConnectButton.textContent = 'Conectar';
-            chatConnectButton.classList.replace('bg-red-600', 'bg-green-600');
+            chatConnectButton.classList.remove('bg-red-600');
+            chatConnectButton.classList.add('bg-green-600');
             isConnected = false;
         } else {
-            if (!twitchUser) {
-                alert("Por favor, inicia sesión con tu cuenta de Twitch en Ajustes.");
+            // Connect
+            if (!twitchSettings.channel || !twitchSettings.oauth) {
+                alert("Por favor, configura tu canal de Twitch y tu token OAuth en Ajustes.");
                 return;
             }
-            window.core.chatConnect();
+            const options = {
+                options: { debug: true },
+                identity: {
+                    username: twitchSettings.channel, // In tmi, username and channel are often the same for chat bots
+                    password: twitchSettings.oauth,
+                },
+                channels: [twitchSettings.channel],
+            };
+            window.core.chatConnect(options);
             chatConnectButton.textContent = 'Desconectar';
-            chatConnectButton.classList.replace('bg-green-600', 'bg-red-600');
+            chatConnectButton.classList.remove('bg-green-600');
+            chatConnectButton.classList.add('bg-red-600');
             isConnected = true;
         }
     });
 
     chatSendButton.addEventListener('click', () => {
         const message = chatInput.value;
-        if (message && isConnected && twitchUser) {
-            window.core.chatSendMessage(twitchUser.username, message);
+        if (message && isConnected) {
+            window.core.chatSendMessage(twitchSettings.channel, message);
             chatInput.value = '';
         }
     });
@@ -767,19 +635,22 @@ function setupChat() {
 
     window.core.onChatMessage(({ username, message, color }) => {
         const messageElement = document.createElement('div');
+        messageElement.className = 'chat-message';
+
         const usernameSpan = document.createElement('span');
-        usernameSpan.className = 'font-bold';
+        usernameSpan.className = 'username';
         usernameSpan.textContent = username;
-        usernameSpan.style.color = color || '#FFFFFF';
+        usernameSpan.style.color = color;
 
         const contentSpan = document.createElement('span');
+        contentSpan.className = 'message-content';
         contentSpan.textContent = `: ${message}`;
 
         messageElement.appendChild(usernameSpan);
         messageElement.appendChild(contentSpan);
 
         chatMessages.appendChild(messageElement);
-        chatMessages.scrollTop = chatMessages.scrollHeight;
+        chatMessages.scrollTop = chatMessages.scrollHeight; // Auto-scroll to bottom
     });
 }
 
@@ -834,79 +705,3 @@ async function updateControlState() {
 }
 
 setInterval(updateControlState, 1000); // Check status every second
-
-// --- Alerts Logic ---
-
-const ALERT_SOURCE_NAME = "TitanMedia Alert Box";
-let alertTimeoutId = null;
-
-async function triggerAlert(username) {
-    if (!alertSettings.enabled || !programScene) return;
-
-    try {
-        const alertOverlay = await window.core.getOverlayTemplates().then(o => o.find(t => t.name === 'Basic Alert'));
-        if (!alertOverlay) {
-            console.error("Basic Alert overlay template not found.");
-            return;
-        }
-
-        // 1. Update the URL with the new username and a timestamp to force reload
-        const newUrl = new URL(alertOverlay.url);
-        newUrl.searchParams.set('username', username);
-        newUrl.searchParams.set('t', Date.now());
-
-        await window.core.updateSourceProperties(ALERT_SOURCE_NAME, { url: newUrl.href });
-
-        // 2. Show the source
-        await window.core.setSceneItemVisible(programScene, ALERT_SOURCE_NAME, true);
-
-        // 3. Hide the source after a delay
-        if (alertTimeoutId) clearTimeout(alertTimeoutId);
-        alertTimeoutId = setTimeout(() => {
-            window.core.setSceneItemVisible(programScene, ALERT_SOURCE_NAME, false);
-        }, 6000); // Hide after 6 seconds
-
-    } catch (error) {
-        console.error("Failed to trigger alert:", error);
-    }
-}
-
-
-function setupAlerts() {
-    // Listen for incoming follow events
-    window.core.onTwitchFollow(({ username }) => {
-        console.log(`Received follow event for ${username}. Triggering alert.`);
-        triggerAlert(username);
-    });
-
-    // Handle the user enabling/disabling alerts
-    enableAlertsCheckbox.addEventListener('change', async () => {
-        alertSettings.enabled = enableAlertsCheckbox.checked;
-        localStorage.setItem('alertSettings', JSON.stringify(alertSettings));
-
-        if (!programScene && alertSettings.enabled) {
-            alert("Por favor, selecciona una escena de programa (en vivo) antes de activar las alertas.");
-            enableAlertsCheckbox.checked = false; // Revert checkbox
-            return;
-        }
-
-        try {
-            if (alertSettings.enabled) {
-                const alertOverlay = await window.core.getOverlayTemplates().then(o => o.find(t => t.name === 'Basic Alert'));
-                await window.core.addSource(programScene, 'browser_source', ALERT_SOURCE_NAME);
-                await window.core.updateSourceProperties(ALERT_SOURCE_NAME, {
-                    url: alertOverlay.url,
-                    width: 1920,
-                    height: 1080
-                });
-                await window.core.setSceneItemVisible(programScene, ALERT_SOURCE_NAME, false);
-                console.log("Alert source added to program scene.");
-            } else {
-                await window.core.removeSource(programScene, ALERT_SOURCE_NAME);
-                console.log("Alert source removed from program scene.");
-            }
-        } catch (error) {
-            console.warn("Could not add/remove alert source:", error.message);
-        }
-    });
-}
