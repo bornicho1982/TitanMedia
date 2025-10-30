@@ -608,96 +608,6 @@ Napi::Value IsRecording(const Napi::CallbackInfo& info) {
     return Napi::Boolean::New(env, active);
 }
 
-// --- Scene Serialization ---
-std::string ObsDataToJsonString(obs_data_t *settings) {
-    if (!settings) return "{}";
-    const char *json_string = obs_data_get_json(settings);
-    std::string result(json_string);
-    bfree((void*)json_string);
-    return result;
-}
-
-bool enum_scene_items_callback_for_serialization(obs_scene_t *scene, obs_sceneitem_t *item, void *param) {
-    auto scene_sources_array = static_cast<Napi::Array*>(param);
-    Napi::Env env = scene_sources_array->Env();
-    obs_source_t *source = obs_sceneitem_get_source(item);
-    if (source) {
-        Napi::Object source_info = Napi::Object::New(env);
-        source_info.Set("name", Napi::String::New(env, obs_source_get_name(source)));
-        source_info.Set("type_id", Napi::String::New(env, obs_source_get_id(source)));
-        obs_data_t *settings = obs_source_get_settings(source);
-        source_info.Set("settings", Napi::String::New(env, ObsDataToJsonString(settings)));
-        obs_data_release(settings);
-        scene_sources_array->Set(scene_sources_array->Length(), source_info);
-    }
-    return true;
-}
-
-bool enum_scenes_for_data_callback(void *param, obs_source_t *source) {
-    if (obs_source_get_type(source) == OBS_SOURCE_TYPE_SCENE) {
-        auto scenes_array = static_cast<Napi::Array*>(param);
-        Napi::Env env = scenes_array->Env();
-        Napi::Object scene_info = Napi::Object::New(env);
-        scene_info.Set("name", Napi::String::New(env, obs_source_get_name(source)));
-        Napi::Array sources_array = Napi::Array::New(env);
-        obs_scene_t *scene = obs_scene_from_source(source);
-        obs_scene_enum_items(scene, enum_scene_items_callback_for_serialization, &sources_array);
-        scene_info.Set("sources", sources_array);
-        scenes_array->Set(scenes_array->Length(), scene_info);
-    }
-    return true;
-}
-
-Napi::Value GetFullSceneData(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
-    Napi::Array scenes_array = Napi::Array::New(env);
-    obs_enum_sources(enum_scenes_for_data_callback, &scenes_array);
-    return scenes_array;
-}
-
-bool remove_all_scenes(void *param, obs_source_t *source) {
-    if (obs_source_get_type(source) == OBS_SOURCE_TYPE_SCENE) {
-        obs_source_remove(source);
-    }
-    return true;
-}
-
-Napi::Value LoadFullSceneData(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
-    if (info.Length() < 1 || !info[0].IsArray()) throw Napi::Error::New(env, "Requires an array of scene data.");
-    Napi::Array scenes_array = info[0].As<Napi::Array>();
-
-    obs_enum_sources(remove_all_scenes, nullptr);
-
-    for (uint32_t i = 0; i < scenes_array.Length(); ++i) {
-        Napi::Object scene_data = scenes_array.Get(i).As<Napi::Object>();
-        std::string scene_name = scene_data.Get("name").As<Napi::String>();
-        obs_scene_t *scene = obs_scene_create(scene_name.c_str());
-        if (!scene) continue;
-
-        Napi::Array sources_array = scene_data.Get("sources").As<Napi::Array>();
-        for (uint32_t j = 0; j < sources_array.Length(); ++j) {
-            Napi::Object source_data = sources_array.Get(j).As<Napi::Object>();
-            obs_data_t *settings = obs_data_create_from_json(source_data.Get("settings").As<Napi::String>().Utf8Value().c_str());
-            obs_source_t *new_source = obs_source_create(
-                source_data.Get("type_id").As<Napi::String>().Utf8Value().c_str(),
-                source_data.Get("name").As<Napi::String>().Utf8Value().c_str(),
-                settings, nullptr);
-            obs_data_release(settings);
-            if (new_source) {
-                obs_scene_add(scene, new_source);
-                obs_source_release(new_source);
-            }
-        }
-
-        if (i == 0) {
-           obs_transition_set(g_main_transition, (obs_source_t*)scene);
-        }
-        obs_scene_release(scene);
-    }
-    return env.Undefined();
-}
-
 
 // --- Module Initialization ---
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
@@ -727,10 +637,6 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("startRecording", Napi::Function::New(env, StartRecording));
   exports.Set("stopRecording", Napi::Function::New(env, StopRecording));
   exports.Set("isRecording", Napi::Function::New(env, IsRecording));
-
-  // Serialization Functions
-  exports.Set("getFullSceneData", Napi::Function::New(env, GetFullSceneData));
-  exports.Set("loadFullSceneData", Napi::Function::New(env, LoadFullSceneData));
 
   return exports;
 }
