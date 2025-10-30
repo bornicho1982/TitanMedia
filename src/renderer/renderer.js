@@ -444,9 +444,8 @@ function renderLoop() {
 
 async function main() {
     try {
-        console.log("Starting OBS...");
-        await window.core.startup();
-        console.log("OBS Started.");
+        // OBS startup is now handled in the main process
+        console.log("Renderer initializing...");
 
         loadSettings();
         setupSettingsModal();
@@ -502,7 +501,7 @@ main();
 
 window.addEventListener('beforeunload', () => {
     if (animationFrameId) cancelAnimationFrame(animationFrameId);
-    window.core.shutdown().catch(console.error);
+    // Shutdown is now handled in the main process
 });
 
 // --- Settings Modal Logic ---
