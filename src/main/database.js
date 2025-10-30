@@ -73,10 +73,7 @@ async function saveSceneCollection(scenes) {
         if (!db) return reject("Database not connected.");
 
         db.serialize(() => {
-            // Start a transaction for performance and safety
             db.run("BEGIN TRANSACTION;");
-
-            // Clear old data
             db.run("DELETE FROM sources;");
             db.run("DELETE FROM scenes;");
 
@@ -87,7 +84,7 @@ async function saveSceneCollection(scenes) {
                 sceneStmt.run(scene.name, function(err) {
                     if (err) return reject(err);
 
-                    const sceneId = this.lastID; // Get the ID of the scene we just inserted
+                    const sceneId = this.lastID;
                     scene.sources.forEach(source => {
                         sourceStmt.run(sceneId, source.name, source.type_id, source.settings);
                     });
@@ -121,7 +118,7 @@ function loadSceneCollection() {
             if (err) return reject(err);
 
             if (sceneRows.length === 0) {
-                return resolve([]); // No scenes saved, return empty array
+                return resolve([]);
             }
 
             let scenesProcessed = 0;
@@ -148,17 +145,15 @@ function loadSceneCollection() {
                     scenesProcessed++;
 
                     if (scenesProcessed === sceneRows.length) {
-                        // Sort scenes by original ID to maintain order
                         scenes.sort((a, b) => a.id - b.id);
                         console.log("Scene collection loaded from database.");
-                        resolve(scenes.map(({id, ...rest}) => rest)); // Remove temporary id
+                        resolve(scenes.map(({id, ...rest}) => rest));
                     }
                 });
             });
         });
     });
 }
-
 
 module.exports = {
     connect,
