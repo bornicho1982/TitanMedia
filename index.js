@@ -5,6 +5,7 @@ const tmi = require('tmi.js');
 
 let chatClient = null;
 let mainWindow = null;
+let botSettings = { enabled: false, commands: [] };
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -65,15 +66,31 @@ ipcMain.handle('chat-connect', (event, options) => {
     chatClient = new tmi.Client(options);
 
     chatClient.on('message', (channel, tags, message, self) => {
-        if(self) return; // Ignore messages from the bot itself
+        if(self) return;
+
+        // Handle bot commands
+        if (botSettings.enabled) {
+            const command = botSettings.commands.find(c => c.command.toLowerCase() === message.toLowerCase());
+            if (command) {
+                chatClient.say(channel, command.response);
+                return; // Stop after processing a command to avoid showing it in the chat UI
+            }
+        }
+
+        // Forward message to UI
         mainWindow.webContents.send('chat-message', {
             username: tags['display-name'],
             message: message,
-            color: tags['color'] || '#FFFFFF' // Use Twitch color or default to white
+            color: tags['color'] || '#FFFFFF'
         });
     });
 
     chatClient.connect().catch(console.error);
+});
+
+ipcMain.on('update-bot-settings', (event, settings) => {
+    console.log("Received bot settings:", settings);
+    botSettings = settings;
 });
 
 ipcMain.handle('chat-disconnect', () => {
