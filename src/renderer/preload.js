@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld('core', {
   addSource: (sceneName, sourceId, sourceName) => core.addSource(sceneName, sourceId, sourceName),
   removeSource: (sceneName, sourceName) => core.removeSource(sceneName, sourceName),
   getSourceProperties: (sourceName) => core.getSourceProperties(sourceName),
+  setSceneItemVisible: (sceneName, sourceName, visible) => core.setSceneItemVisible(sceneName, sourceName, visible),
   updateSourceProperties: (sourceName, properties) => core.updateSourceProperties(sourceName, properties),
 
   // Audio Management
@@ -80,6 +81,9 @@ contextBridge.exposeInMainWorld('core', {
 
   // Database
   loadScenes: () => ipcRenderer.invoke('db-load-scenes'),
+
+  // Twitch Events
+  onTwitchFollow: (callback) => ipcRenderer.on('twitch-event-follow', (_event, value) => callback(value)),
 });
 
 contextBridge.exposeInMainWorld('platform', {
