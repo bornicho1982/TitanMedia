@@ -23,3 +23,6 @@ obs-studio-*/
 
 # Scratch directory
 jules-scratch/
+
+# Configuration file with secrets
+config.json

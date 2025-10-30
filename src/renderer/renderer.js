@@ -31,8 +31,14 @@ const logoSelectButton = document.getElementById('logo-select-button');
 const logoPathElement = document.getElementById('logo-path');
 
 // Twitch Accounts constants
-const twitchChannelInput = document.getElementById('twitch-channel');
-const twitchOauthInput = document.getElementById('twitch-oauth');
+const twitchLoggedOutView = document.getElementById('twitch-logged-out-view');
+const twitchLoggedInView = document.getElementById('twitch-logged-in-view');
+const twitchLoadingView = document.getElementById('twitch-loading-view');
+const twitchLoginButton = document.getElementById('twitch-login-button');
+const twitchLogoutButton = document.getElementById('twitch-logout-button');
+const twitchUserAvatar = document.getElementById('twitch-user-avatar');
+const twitchUserName = document.getElementById('twitch-user-name');
+
 
 // Chat Panel constants
 const chatMessages = document.getElementById('chat-messages');
@@ -446,6 +452,7 @@ async function main() {
         setupSettingsModal();
         setupChat();
         setupBotSettings();
+        setupTwitchAuth();
 
         await updateSceneList();
         await updateOverlayGallery(); // Populate overlays on startup
@@ -529,8 +536,6 @@ function setupSettingsModal() {
         streamerNameInput.value = brandingSettings.name;
         brandColorInput.value = brandingSettings.color;
         logoPathElement.textContent = brandingSettings.logo || 'Ningún archivo seleccionado.';
-        twitchChannelInput.value = twitchSettings.channel;
-        twitchOauthInput.value = twitchSettings.oauth;
 
         // Load bot settings into view
         botEnabledCheckbox.checked = botSettings.enabled;
@@ -555,12 +560,12 @@ function setupSettingsModal() {
         // The logo path is saved by the logo selection logic
         localStorage.setItem('brandingSettings', JSON.stringify(brandingSettings));
 
-        // Save Twitch settings
-        twitchSettings.channel = twitchChannelInput.value;
-        twitchSettings.oauth = twitchOauthInput.value;
-        localStorage.setItem('twitchSettings', JSON.stringify(twitchSettings));
+        // Twitch settings are now handled by the new auth flow, so we remove the old save logic
+        // twitchSettings.channel = twitchChannelInput.value;
+        // twitchSettings.oauth = twitchOauthInput.value;
+        // localStorage.setItem('twitchSettings', JSON.stringify(twitchSettings));
 
-        console.log("Settings saved:", { streamSettings, brandingSettings, twitchSettings });
+        console.log("Settings saved:", { streamSettings, brandingSettings });
         settingsModal.classList.add('hidden');
     });
 
@@ -582,10 +587,11 @@ function loadSettings() {
     if (savedBrandingSettings) {
         brandingSettings = JSON.parse(savedBrandingSettings);
     }
-    const savedTwitchSettings = localStorage.getItem('twitchSettings');
-    if (savedTwitchSettings) {
-        twitchSettings = JSON.parse(savedTwitchSettings);
-    }
+    // Old twitchSettings are deprecated
+    // const savedTwitchSettings = localStorage.getItem('twitchSettings');
+    // if (savedTwitchSettings) {
+    //     twitchSettings = JSON.parse(savedTwitchSettings);
+    // }
     const savedBotSettings = localStorage.getItem('botSettings');
     if (savedBotSettings) {
         botSettings = JSON.parse(savedBotSettings);
@@ -652,44 +658,77 @@ function saveBotSettings() {
 }
 
 
+// --- Twitch Auth Logic ---
+function setupTwitchAuth() {
+    twitchLoginButton.addEventListener('click', async () => {
+        const user = await window.core.twitchLogin();
+        updateTwitchUi(user);
+    });
+
+    twitchLogoutButton.addEventListener('click', async () => {
+        await window.core.twitchLogout();
+        updateTwitchUi({ loggedIn: false });
+    });
+
+    async function checkInitialStatus() {
+        updateTwitchUi({ loading: true });
+        const status = await window.core.getTwitchStatus();
+        updateTwitchUi(status);
+    }
+
+    checkInitialStatus();
+}
+
+function updateTwitchUi(status) {
+    if (status.loading) {
+        twitchLoadingView.classList.remove('hidden');
+        twitchLoggedInView.classList.add('hidden');
+        twitchLoggedOutView.classList.add('hidden');
+    } else if (status.loggedIn) {
+        twitchLoadingView.classList.add('hidden');
+        twitchLoggedInView.classList.remove('hidden');
+        twitchLoggedOutView.classList.add('hidden');
+        twitchUserName.textContent = status.displayName;
+        twitchUserAvatar.src = status.profilePictureUrl;
+    } else {
+        twitchLoadingView.classList.add('hidden');
+        twitchLoggedInView.classList.add('hidden');
+        twitchLoggedOutView.classList.remove('hidden');
+    }
+}
+
 // --- Chat Logic ---
 function setupChat() {
     let isConnected = false;
 
-    chatConnectButton.addEventListener('click', () => {
+    chatConnectButton.addEventListener('click', async () => {
         if (isConnected) {
             // Disconnect
-            window.core.chatDisconnect();
-            chatConnectButton.textContent = 'Conectar';
+            await window.core.chatDisconnect();
+            chatConnectButton.textContent = 'Conectar Chat';
             chatConnectButton.classList.remove('bg-red-600');
             chatConnectButton.classList.add('bg-green-600');
             isConnected = false;
         } else {
             // Connect
-            if (!twitchSettings.channel || !twitchSettings.oauth) {
-                alert("Por favor, configura tu canal de Twitch y tu token OAuth en Ajustes.");
+            const twitchStatus = await window.core.getTwitchStatus();
+            if (!twitchStatus.loggedIn) {
+                 alert("Por favor, conecta tu cuenta de Twitch en la pestaña 'Cuentas' de los Ajustes.");
                 return;
             }
-            const options = {
-                options: { debug: true },
-                identity: {
-                    username: twitchSettings.channel, // In tmi, username and channel are often the same for chat bots
-                    password: twitchSettings.oauth,
-                },
-                channels: [twitchSettings.channel],
-            };
-            window.core.chatConnect(options);
-            chatConnectButton.textContent = 'Desconectar';
+            await window.core.chatConnect();
+            chatConnectButton.textContent = 'Desconectar Chat';
             chatConnectButton.classList.remove('bg-green-600');
             chatConnectButton.classList.add('bg-red-600');
             isConnected = true;
         }
     });
 
-    chatSendButton.addEventListener('click', () => {
+    chatSendButton.addEventListener('click', async () => {
         const message = chatInput.value;
         if (message && isConnected) {
-            window.core.chatSendMessage(twitchSettings.channel, message);
+             const twitchStatus = await window.core.getTwitchStatus();
+            window.core.chatSendMessage(twitchStatus.displayName, message);
             chatInput.value = '';
         }
     });

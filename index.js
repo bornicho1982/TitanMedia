@@ -1,7 +1,9 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { initTwitch, doTwitchLogin, doTwitchLogout, getApiClient, getTwitchUserId } = require('./src/main/twitch-integration');
 const tmi = require('tmi.js');
+
 
 let chatClient = null;
 let mainWindow = null;
@@ -21,7 +23,8 @@ function createWindow() {
   mainWindow.loadFile('src/renderer/index.html');
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  await initTwitch();
   createWindow();
 
   app.on('activate', function () {
@@ -55,41 +58,94 @@ ipcMain.handle('select-logo', async (event) => {
     return newPath;
 });
 
-// --- Chat IPC Handlers ---
-ipcMain.handle('chat-connect', (event, options) => {
+// --- Twitch & Chat IPC Handlers ---
+
+ipcMain.handle('twitch-login', async () => {
+    try {
+        const userInfo = await doTwitchLogin();
+        return {
+            id: userInfo.id,
+            displayName: userInfo.displayName,
+            profilePictureUrl: userInfo.profilePictureUrl
+        };
+    } catch (error) {
+        console.error('Login failed:', error);
+        return null;
+    }
+});
+
+ipcMain.handle('twitch-logout', async () => {
+    await doTwitchLogout();
+});
+
+ipcMain.handle('get-twitch-status', async () => {
+    const userId = getTwitchUserId();
+    if (!userId) {
+        return { loggedIn: false };
+    }
+    try {
+        const apiClient = getApiClient();
+        const user = await apiClient.users.getUserById(userId);
+        return {
+            loggedIn: true,
+            id: user.id,
+            displayName: user.displayName,
+            profilePictureUrl: user.profilePictureUrl
+        };
+    } catch (error) {
+        console.error("Error getting Twitch status:", error);
+        return { loggedIn: false };
+    }
+});
+
+
+ipcMain.handle('chat-connect', async () => {
     if (chatClient && chatClient.readyState() === 'OPEN') {
         console.log("Chat client is already connected.");
         return;
     }
 
-    console.log("Connecting to Twitch chat with options:", options);
-    chatClient = new tmi.Client(options);
+    const userId = getTwitchUserId();
+    if (!userId) {
+        console.error("Cannot connect to chat: User not logged in.");
+        return;
+    }
+    const apiClient = getApiClient();
+    const user = await apiClient.users.getUserById(userId);
+
+    const chatAuthProvider = apiClient.authProvider;
+
+    chatClient = new tmi.Client({
+        identity: {
+            username: user.name,
+            password: `oauth:${chatAuthProvider.getAccessTokenForUser(userId)}`
+        },
+        channels: [ user.name ],
+         authProvider: chatAuthProvider,
+    });
+
+    await chatClient.connect();
 
     chatClient.on('message', (channel, tags, message, self) => {
-        if(self) return;
+        if (self) return;
 
-        // Handle bot commands
         if (botSettings.enabled) {
             const command = botSettings.commands.find(c => c.command.toLowerCase() === message.toLowerCase());
             if (command) {
                 chatClient.say(channel, command.response);
-                return; // Stop after processing a command to avoid showing it in the chat UI
+                return;
             }
         }
 
-        // Forward message to UI
         mainWindow.webContents.send('chat-message', {
             username: tags['display-name'],
             message: message,
-            color: tags['color'] || '#FFFFFF'
+            color: tags['color'] || '#FFFFFF',
         });
     });
-
-    chatClient.connect().catch(console.error);
 });
 
 ipcMain.on('update-bot-settings', (event, settings) => {
-    console.log("Received bot settings:", settings);
     botSettings = settings;
 });
 
@@ -97,7 +153,6 @@ ipcMain.handle('chat-disconnect', () => {
     if (chatClient) {
         chatClient.disconnect();
         chatClient = null;
-        console.log("Disconnected from Twitch chat.");
     }
 });
 
