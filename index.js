@@ -1,123 +1,132 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
-const core = require('./build/Release/titan_media_core.node');
-const twitch = require('./twitch-integration');
+const fs = require('fs');
+const tmi = require('tmi.js');
+const database = require('./src/main/database');
 
-let mainWindow;
+let chatClient = null;
+let mainWindow = null;
 
 function createWindow() {
-    mainWindow = new BrowserWindow({
-        width: 1600,
-        height: 900,
-        webPreferences: {
-            preload: path.join(__dirname, 'src', 'renderer', 'preload.js'),
-            contextIsolation: true,
-            nodeIntegration: false,
-        },
-    });
+  mainWindow = new BrowserWindow({
+    width: 1400,
+    height: 800,
+    webPreferences: {
+      preload: path.join(__dirname, 'src/renderer/preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
 
-    mainWindow.loadFile(path.join(__dirname, 'src', 'renderer', 'index.html'));
-    // mainWindow.webContents.openDevTools();
+  mainWindow.loadFile('src/renderer/index.html');
 }
 
 app.whenReady().then(() => {
-    createWindow();
+  database.initialize();
+  createWindow();
 
-    app.on('activate', () => {
-        if (BrowserWindow.getAllWindows().length === 0) {
-            createWindow();
-        }
-    });
+  app.on('activate', function () {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
 });
 
-app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') {
-        core.shutdown();
-        app.quit();
-    }
-});
-
-// IPC Handlers
-ipcMain.handle('core-startup', () => core.startup());
-ipcMain.handle('core-shutdown', () => core.shutdown());
-ipcMain.handle('core-get-scene-list', () => core.getSceneList());
-ipcMain.handle('core-get-scene-sources', (event, sceneName) => core.getSceneSources(sceneName));
-ipcMain.handle('core-create-scene', (event, sceneName) => core.createScene(sceneName));
-ipcMain.handle('core-remove-scene', (event, sceneName) => core.removeScene(sceneName));
-ipcMain.handle('core-set-current-scene', (event, sceneName) => core.setCurrentScene(sceneName));
-ipcMain.handle('core-set-preview-scene', (event, sceneName) => core.setPreviewScene(sceneName));
-ipcMain.handle('core-transition', () => core.transition());
-ipcMain.handle('core-add-source', (event, sceneName, sourceId, sourceName) => core.addSource(sceneName, sourceId, sourceName));
-ipcMain.handle('core-remove-source', (event, sourceName) => core.removeSource(sourceName));
-ipcMain.handle('core-get-source-properties', (event, sourceName) => core.getSourceProperties(sourceName));
-ipcMain.handle('core-update-source-properties', (event, sourceName, properties) => core.updateSourceProperties(sourceName, properties));
-ipcMain.handle('core-start-streaming', () => core.startStreaming());
-ipcMain.handle('core-stop-streaming', () => core.stopStreaming());
-ipcMain.handle('core-is-streaming', () => core.isStreaming());
-ipcMain.handle('core-get-audio-levels', () => core.getAudioLevels());
-ipcMain.handle('core-is-source-muted', (event, sourceName) => core.isSourceMuted(sourceName));
-ipcMain.handle('core-set-source-muted', (event, sourceName, muted) => core.setSourceMuted(sourceName, muted));
-ipcMain.handle('dialog-select-logo', async () => {
-    const { canceled, filePaths } = await dialog.showOpenDialog({
+ipcMain.handle('select-logo', async (event) => {
+    const result = await dialog.showOpenDialog({
         properties: ['openFile'],
-        filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif'] }]
+        filters: [
+            { name: 'Images', extensions: ['jpg', 'png', 'gif'] }
+        ]
     });
-    if (!canceled) {
-        return filePaths[0];
+
+    if (result.canceled) {
+        return null;
     }
-    return null;
+
+    const originalPath = result.filePaths[0];
+    const userDataPath = app.getPath('userData');
+    const brandingDir = path.join(userDataPath, 'branding');
+
+    if (!fs.existsSync(brandingDir)) {
+        fs.mkdirSync(brandingDir);
+    }
+
+    const newPath = path.join(brandingDir, path.basename(originalPath));
+    fs.copyFileSync(originalPath, newPath);
+
+    return newPath;
 });
 
-ipcMain.handle('get-overlay-templates', () => {
-    const fs = require('fs');
-    const overlaysDir = path.join(__dirname, 'src', 'renderer', 'overlays');
-    try {
-        const templateDirs = fs.readdirSync(overlaysDir, { withFileTypes: true })
-            .filter(dirent => dirent.isDirectory())
-            .map(dirent => dirent.name);
+// --- Chat IPC Handlers ---
+ipcMain.handle('chat-connect', (event, options) => {
+    if (chatClient && chatClient.readyState() === 'OPEN') {
+        console.log("Chat client is already connected.");
+        return;
+    }
 
-        return templateDirs.map(dir => ({
-            name: dir.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-            url: `file://${path.join(overlaysDir, dir, 'index.html')}`,
-            thumbnail: `./overlays/${dir}/thumbnail.png`
-        }));
-    } catch (error) {
-        console.error("Error reading overlay templates:", error);
-        return [];
+    console.log("Connecting to Twitch chat with options:", options);
+    chatClient = new tmi.Client(options);
+
+    chatClient.on('message', (channel, tags, message, self) => {
+        if(self) return; // Ignore messages from the bot itself
+        mainWindow.webContents.send('chat-message', {
+            username: tags['display-name'],
+            message: message,
+            color: tags['color'] || '#FFFFFF' // Use Twitch color or default to white
+        });
+    });
+
+    chatClient.connect().catch(console.error);
+});
+
+ipcMain.handle('chat-disconnect', () => {
+    if (chatClient) {
+        chatClient.disconnect();
+        chatClient = null;
+        console.log("Disconnected from Twitch chat.");
+    }
+});
+
+ipcMain.handle('chat-send-message', (event, channel, message) => {
+    if (chatClient && chatClient.readyState() === 'OPEN') {
+        chatClient.say(channel, message);
+    } else {
+        console.error("Cannot send message, chat client is not connected.");
     }
 });
 
 
-// Twitch Integration IPC Handlers
-ipcMain.handle('twitch-login', async () => {
-    return twitch.login(mainWindow);
-});
-ipcMain.handle('twitch-logout', async () => {
-    await twitch.logout();
-});
-ipcMain.handle('twitch-get-user', async () => {
-    return twitch.getCurrentUser();
-});
-ipcMain.handle('twitch-get-channel-info', async () => {
-    return twitch.getChannelInfo();
-});
-ipcMain.handle('twitch-update-channel-info', async (event, title, category) => {
-    return twitch.updateChannelInfo(title, category);
-});
-
-// Chat IPC Handlers
-ipcMain.on('chat-connect', () => {
-    twitch.connectChat();
-});
-ipcMain.on('chat-disconnect', () => {
-    twitch.disconnectChat();
-});
-ipcMain.on('chat-send-message', (event, channel, message) => {
-    twitch.sendMessage(channel, message);
-});
-
-twitch.onChatMessage((username, message, color) => {
-    if (mainWindow && mainWindow.webContents) {
-        mainWindow.webContents.send('chat-message', { username, message, color });
+app.on('window-all-closed', function () {
+    if (chatClient) {
+        chatClient.disconnect();
     }
+    const core = require('./build/Release/titan_media_core.node');
+    const sceneData = core.getFullSceneData();
+    database.saveFullSceneData(sceneData, (err) => {
+        if (err) console.error("Failed to save scenes before quitting:", err);
+        else console.log("Successfully saved all scenes.");
+
+        core.shutdown();
+        if (process.platform !== 'darwin') app.quit();
+    });
+});
+
+// Database IPC Handlers
+ipcMain.handle('db-load-scenes', async () => {
+    return new Promise((resolve, reject) => {
+        database.getSceneNames((err, rows) => {
+            if (err) return reject(err);
+            resolve(rows.map(r => r.name));
+        });
+    });
+});
+
+ipcMain.handle('db-load-full-scene-data', async (event, sceneNames) => {
+    const core = require('./build/Release/titan_media_core.node');
+    return new Promise((resolve, reject) => {
+        database.loadFullSceneData(sceneNames, (err, sceneData) => {
+            if (err) return reject(err);
+            if (sceneData) core.loadFullSceneData(sceneData);
+            resolve();
+        });
+    });
 });

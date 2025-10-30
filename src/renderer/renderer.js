@@ -31,17 +31,8 @@ const logoSelectButton = document.getElementById('logo-select-button');
 const logoPathElement = document.getElementById('logo-path');
 
 // Twitch Accounts constants
-const twitchLoginButton = document.getElementById('twitch-login-button');
-const twitchLogoutButton = document.getElementById('twitch-logout-button');
-const twitchLoggedOutView = document.getElementById('twitch-logged-out-view');
-const twitchLoggedInView = document.getElementById('twitch-logged-in-view');
-const twitchUsernameSpan = document.getElementById('twitch-username');
-
-// Stream Manager constants
-const streamManagerPanel = document.getElementById('stream-manager-panel');
-const streamTitleInput = document.getElementById('stream-title');
-const streamCategoryInput = document.getElementById('stream-category');
-const updateStreamInfoButton = document.getElementById('update-stream-info-button');
+const twitchChannelInput = document.getElementById('twitch-channel');
+const twitchOauthInput = document.getElementById('twitch-oauth');
 
 // Chat Panel constants
 const chatMessages = document.getElementById('chat-messages');
@@ -56,7 +47,7 @@ let programScene = '';
 let selectedSource = '';
 let streamSettings = { server: '', key: '' };
 let brandingSettings = { name: 'YourName', color: '#8a2be2', logo: '' };
-let twitchUser = null;
+let twitchSettings = { channel: '', oauth: '' };
 const transitionButton = document.getElementById('transition-button');
 
 // --- UI Update Functions ---
@@ -445,22 +436,27 @@ async function main() {
 
         loadSettings();
         setupSettingsModal();
-        setupTwitchAuth();
-        setupStreamManager();
         setupChat();
 
-        // With persistence removed, we just create a default scene on startup.
-        await window.core.createScene("Scene 1");
+        const savedScenes = await window.core.loadScenes();
+        if (savedScenes && savedScenes.length > 0) {
+            await window.core.loadFullSceneData(savedScenes);
+            console.log("Loaded scenes from database.");
+        } else {
+            await window.core.createScene("Scene 1");
+            console.log("No saved scenes found. Created a default scene.");
+        }
 
         await updateSceneList();
-        await updateOverlayGallery();
+        await updateOverlayGallery(); // Populate overlays on startup
         const scenes = await window.core.getSceneList();
         if (scenes.length > 0) {
+            // Set the first scene as the active one for editing
             await setAsPreviewScene(scenes[0]);
         }
 
         renderLoop();
-        setInterval(updateSceneList, 1000);
+        setInterval(updateSceneList, 1000); // Periodically update scene highlights
     } catch (error) {
         console.error("Failed to initialize application:", error);
     }
@@ -474,10 +470,19 @@ async function addOverlayToScene(overlay) {
     try {
         const sourceName = `${overlay.name} Overlay`;
         await window.core.addSource(previewScene, 'browser_source', sourceName);
+
         const url = new URL(overlay.url);
         url.searchParams.append('name', brandingSettings.name);
         url.searchParams.append('color', brandingSettings.color);
-        await window.core.updateSourceProperties(sourceName, { url: url.href, width: 1920, height: 1080 });
+        // Logo would be handled inside the overlay's JS if it needs to display it
+
+        const settings = {
+            url: url.href,
+            width: 1920,
+            height: 1080
+        };
+        await window.core.updateSourceProperties(sourceName, settings);
+
         console.log(`Added and configured overlay '${sourceName}' to scene '${previewScene}'`);
         await updateSourceList(previewScene);
     } catch (error) {
@@ -494,41 +499,64 @@ window.addEventListener('beforeunload', () => {
 });
 
 // --- Settings Modal Logic ---
+
 function setupSettingsModal() {
     const tabs = document.querySelectorAll('.tab-button');
     const tabContents = document.querySelectorAll('.tab-content');
 
     tabs.forEach(tab => {
         tab.addEventListener('click', () => {
+            // Update active tab styles
             tabs.forEach(t => t.classList.remove('active-tab'));
             tab.classList.add('active-tab');
+
+            // Show/hide content
             const tabName = tab.dataset.tab;
             tabContents.forEach(content => {
-                content.classList.toggle('hidden', content.id !== `tab-content-${tabName}`);
+                if (content.id === `tab-content-${tabName}`) {
+                    content.classList.remove('hidden');
+                } else {
+                    content.classList.add('hidden');
+                }
             });
         });
     });
 
     settingsButton.addEventListener('click', () => {
+        // Load current settings into the modal
         rtmpServerInput.value = streamSettings.server;
         streamKeyInput.value = streamSettings.key;
         streamerNameInput.value = brandingSettings.name;
         brandColorInput.value = brandingSettings.color;
         logoPathElement.textContent = brandingSettings.logo || 'Ningún archivo seleccionado.';
-        updateTwitchAuthStateUI();
+        twitchChannelInput.value = twitchSettings.channel;
+        twitchOauthInput.value = twitchSettings.oauth;
+
         settingsModal.classList.remove('hidden');
     });
 
-    settingsCancelButton.addEventListener('click', () => settingsModal.classList.add('hidden'));
+    settingsCancelButton.addEventListener('click', () => {
+        settingsModal.classList.add('hidden');
+    });
 
     settingsSaveButton.addEventListener('click', () => {
+        // Save stream settings
         streamSettings.server = rtmpServerInput.value;
         streamSettings.key = streamKeyInput.value;
         localStorage.setItem('streamSettings', JSON.stringify(streamSettings));
+
+        // Save branding settings
         brandingSettings.name = streamerNameInput.value;
         brandingSettings.color = brandColorInput.value;
+        // The logo path is saved by the logo selection logic
         localStorage.setItem('brandingSettings', JSON.stringify(brandingSettings));
-        console.log("Settings saved:", { streamSettings, brandingSettings });
+
+        // Save Twitch settings
+        twitchSettings.channel = twitchChannelInput.value;
+        twitchSettings.oauth = twitchOauthInput.value;
+        localStorage.setItem('twitchSettings', JSON.stringify(twitchSettings));
+
+        console.log("Settings saved:", { streamSettings, brandingSettings, twitchSettings });
         settingsModal.classList.add('hidden');
     });
 
@@ -543,128 +571,86 @@ function setupSettingsModal() {
 
 function loadSettings() {
     const savedStreamSettings = localStorage.getItem('streamSettings');
-    if (savedStreamSettings) streamSettings = JSON.parse(savedStreamSettings);
+    if (savedStreamSettings) {
+        streamSettings = JSON.parse(savedStreamSettings);
+    }
     const savedBrandingSettings = localStorage.getItem('brandingSettings');
-    if (savedBrandingSettings) brandingSettings = JSON.parse(savedBrandingSettings);
-}
-
-// --- Twitch, Stream Manager & Chat Logic ---
-function updateTwitchAuthStateUI() {
-    if (twitchUser) {
-        twitchLoggedInView.classList.remove('hidden');
-        twitchLoggedOutView.classList.add('hidden');
-        twitchUsernameSpan.textContent = twitchUser.username;
-        streamManagerPanel.classList.remove('hidden');
-    } else {
-        twitchLoggedInView.classList.add('hidden');
-        twitchLoggedOutView.classList.remove('hidden');
-        streamManagerPanel.classList.add('hidden');
+    if (savedBrandingSettings) {
+        brandingSettings = JSON.parse(savedBrandingSettings);
+    }
+    const savedTwitchSettings = localStorage.getItem('twitchSettings');
+    if (savedTwitchSettings) {
+        twitchSettings = JSON.parse(savedTwitchSettings);
     }
 }
 
-async function loadStreamInfo() {
-    try {
-        const info = await window.core.getChannelInfo();
-        streamTitleInput.value = info.title;
-        streamCategoryInput.value = info.category;
-    } catch (error) {
-        console.error("Failed to load stream info:", error);
-    }
-}
 
-async function setupTwitchAuth() {
-    twitchUser = await window.core.getTwitchUser();
-    updateTwitchAuthStateUI();
-    if (twitchUser) loadStreamInfo();
-
-    twitchLoginButton.addEventListener('click', async () => {
-        twitchUser = await window.core.twitchLogin();
-        updateTwitchAuthStateUI();
-        if (twitchUser) {
-            console.log(`Logged in as ${twitchUser.username}`);
-            loadStreamInfo();
-        } else {
-            console.log("Login flow was cancelled.");
-        }
-    });
-
-    twitchLogoutButton.addEventListener('click', async () => {
-        await window.core.twitchLogout();
-        twitchUser = null;
-        updateTwitchAuthStateUI();
-        streamTitleInput.value = '';
-        streamCategoryInput.value = '';
-        console.log("Logged out.");
-    });
-}
-
-function setupStreamManager() {
-    updateStreamInfoButton.addEventListener('click', async () => {
-        const title = streamTitleInput.value;
-        const category = streamCategoryInput.value;
-        if (!title || !category) {
-            alert("El título y la categoría no pueden estar vacíos.");
-            return;
-        }
-        try {
-            updateStreamInfoButton.textContent = "Actualizando...";
-            updateStreamInfoButton.disabled = true;
-            await window.core.updateChannelInfo(title, category);
-            alert("Información del stream actualizada con éxito.");
-        } catch (error) {
-            console.error("Failed to update stream info:", error);
-            alert(`Error al actualizar: ${error.message}`);
-        } finally {
-            updateStreamInfoButton.textContent = "Actualizar";
-            updateStreamInfoButton.disabled = false;
-        }
-    });
-}
-
+// --- Chat Logic ---
 function setupChat() {
     let isConnected = false;
+
     chatConnectButton.addEventListener('click', () => {
         if (isConnected) {
+            // Disconnect
             window.core.chatDisconnect();
             chatConnectButton.textContent = 'Conectar';
-            chatConnectButton.classList.replace('bg-red-600', 'bg-green-600');
+            chatConnectButton.classList.remove('bg-red-600');
+            chatConnectButton.classList.add('bg-green-600');
             isConnected = false;
         } else {
-            if (!twitchUser) {
-                alert("Por favor, inicia sesión con tu cuenta de Twitch en Ajustes.");
+            // Connect
+            if (!twitchSettings.channel || !twitchSettings.oauth) {
+                alert("Por favor, configura tu canal de Twitch y tu token OAuth en Ajustes.");
                 return;
             }
-            window.core.chatConnect();
+            const options = {
+                options: { debug: true },
+                identity: {
+                    username: twitchSettings.channel, // In tmi, username and channel are often the same for chat bots
+                    password: twitchSettings.oauth,
+                },
+                channels: [twitchSettings.channel],
+            };
+            window.core.chatConnect(options);
             chatConnectButton.textContent = 'Desconectar';
-            chatConnectButton.classList.replace('bg-green-600', 'bg-red-600');
+            chatConnectButton.classList.remove('bg-green-600');
+            chatConnectButton.classList.add('bg-red-600');
             isConnected = true;
         }
     });
 
     chatSendButton.addEventListener('click', () => {
         const message = chatInput.value;
-        if (message && isConnected && twitchUser) {
-            window.core.chatSendMessage(twitchUser.username, message);
+        if (message && isConnected) {
+            window.core.chatSendMessage(twitchSettings.channel, message);
             chatInput.value = '';
         }
     });
 
     chatInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') chatSendButton.click();
+        if (e.key === 'Enter') {
+            chatSendButton.click();
+        }
     });
 
     window.core.onChatMessage(({ username, message, color }) => {
         const messageElement = document.createElement('div');
+        messageElement.className = 'chat-message';
+
         const usernameSpan = document.createElement('span');
-        usernameSpan.className = 'font-bold';
+        usernameSpan.className = 'username';
         usernameSpan.textContent = username;
-        usernameSpan.style.color = color || '#FFFFFF';
+        usernameSpan.style.color = color;
+
         const contentSpan = document.createElement('span');
+        contentSpan.className = 'message-content';
         contentSpan.textContent = `: ${message}`;
+
         messageElement.appendChild(usernameSpan);
         messageElement.appendChild(contentSpan);
+
         chatMessages.appendChild(messageElement);
-        chatMessages.scrollTop = chatMessages.scrollHeight;
+        chatMessages.scrollTop = chatMessages.scrollHeight; // Auto-scroll to bottom
     });
 }
 
