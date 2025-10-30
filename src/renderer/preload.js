@@ -63,8 +63,13 @@ contextBridge.exposeInMainWorld('core', {
 
   selectLogo: () => ipcRenderer.invoke('select-logo'),
 
-  // Chat Management
-  chatConnect: (options) => ipcRenderer.invoke('chat-connect', options),
+  // Twitch Integration
+  twitchLogin: () => ipcRenderer.invoke('twitch-login'),
+  twitchLogout: () => ipcRenderer.invoke('twitch-logout'),
+  getTwitchUser: () => ipcRenderer.invoke('get-twitch-user'),
+  getChannelInfo: () => ipcRenderer.invoke('get-channel-info'),
+  updateChannelInfo: (title, category) => ipcRenderer.invoke('update-channel-info', title, category),
+  chatConnect: () => ipcRenderer.invoke('chat-connect'),
   chatDisconnect: () => ipcRenderer.invoke('chat-disconnect'),
   chatSendMessage: (channel, message) => ipcRenderer.invoke('chat-send-message', channel, message),
   onChatMessage: (callback) => ipcRenderer.on('chat-message', (_event, value) => callback(value)),
