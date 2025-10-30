@@ -2,6 +2,10 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const twitchIntegration = require('./src/main/twitch-integration');
+const db = require('./src/main/database');
+
+const addonPath = path.join(__dirname, 'build/Release/titan_media_core');
+const core = require(addonPath);
 
 let mainWindow = null;
 
@@ -19,13 +23,20 @@ function createWindow() {
   mainWindow.loadFile('src/renderer/index.html');
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  await db.connect();
+  await db.initialize();
+
   createWindow();
   twitchIntegration.initialize(mainWindow);
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+});
+
+ipcMain.handle('db-load-scenes', async () => {
+    return await db.loadSceneCollection();
 });
 
 ipcMain.handle('select-logo', async (event) => {
@@ -54,7 +65,15 @@ ipcMain.handle('select-logo', async (event) => {
     return newPath;
 });
 
-app.on('window-all-closed', function () {
+app.on('window-all-closed', async function () {
+    try {
+        const sceneData = core.getFullSceneData();
+        await db.saveSceneCollection(sceneData);
+    } catch (error) {
+        console.error("Failed to save scene configuration:", error);
+    }
+
     twitchIntegration.cleanup();
+    await db.close();
     if (process.platform !== 'darwin') app.quit();
 });
