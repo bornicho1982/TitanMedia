@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld('core', {
   // Core lifecycle
   startup: () => core.startup(),
   shutdown: () => core.shutdown(),
+  getFullSceneData: () => core.getFullSceneData(),
+  loadFullSceneData: (data) => core.loadFullSceneData(data),
 
   // Video Rendering
   getLatestFrame: () => core.getLatestFrame(),

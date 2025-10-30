@@ -608,6 +608,191 @@ Napi::Value IsRecording(const Napi::CallbackInfo& info) {
     return Napi::Boolean::New(env, active);
 }
 
+// --- Serialization / Deserialization ---
+
+Napi::Object ObsDataToNapiObject(Napi::Env env, obs_data_t* data) {
+    Napi::Object obj = Napi::Object::New(env);
+    if (!data) return obj;
+
+    obs_data_item_t* item = obs_data_first(data);
+    while (item) {
+        const char* key = obs_data_item_get_name(item);
+        auto type = obs_data_item_get_type(item);
+
+        switch (type) {
+            case OBS_DATA_STRING:
+                obj.Set(key, obs_data_item_get_string(item));
+                break;
+            case OBS_DATA_NUMBER:
+                obj.Set(key, obs_data_item_get_int(item));
+                break;
+            case OBS_DATA_BOOLEAN:
+                obj.Set(key, obs_data_item_get_bool(item));
+                break;
+            // Skipping other types for now for simplicity
+        }
+
+        obs_data_item_next(&item);
+    }
+    obs_data_item_release(&item);
+    return obj;
+}
+
+obs_data_t* NapiObjectToObsData(Napi::Env env, Napi::Object obj) {
+    obs_data_t* data = obs_data_create();
+    Napi::Array keys = obj.GetPropertyNames();
+
+    for (uint32_t i = 0; i < keys.Length(); i++) {
+        Napi::Value key_val = keys.Get(i);
+        std::string key = key_val.As<Napi::String>();
+        Napi::Value val = obj.Get(key);
+
+        if (val.IsString()) {
+            obs_data_set_string(data, key.c_str(), val.As<Napi::String>().Utf8Value().c_str());
+        } else if (val.IsNumber()) {
+            obs_data_set_int(data, key.c_str(), val.As<Napi::Number>().Int64Value());
+        } else if (val.IsBoolean()) {
+            obs_data_set_bool(data, key.c_str(), val.As<Napi::Boolean>().Value());
+        }
+    }
+    return data;
+}
+
+
+Napi::Value GetFullSceneData(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    Napi::Object result = Napi::Object::New(env);
+    Napi::Array scenes_array = Napi::Array::New(env);
+    uint32_t scene_idx = 0;
+
+    auto enum_scenes = [](void *param, obs_source_t *scene_source) {
+        if (obs_source_get_type(scene_source) != OBS_SOURCE_TYPE_SCENE) {
+            return true; // continue
+        }
+
+        auto* data = static_cast<std::tuple<Napi::Env, Napi::Array&>*>(param);
+        Napi::Env env = std::get<0>(*data);
+        Napi::Array& scenes_array = std::get<1>(*data);
+
+        Napi::Object scene_obj = Napi::Object::New(env);
+        scene_obj.Set("name", obs_source_get_name(scene_source));
+
+        Napi::Array sources_array = Napi::Array::New(env);
+        uint32_t source_idx = 0;
+
+        obs_scene_t *scene = obs_scene_from_source(scene_source);
+        auto enum_items = [](obs_scene_t*, obs_sceneitem_t *item, void *p) {
+            auto* item_data = static_cast<std::tuple<Napi::Env, Napi::Array&>*>(p);
+            Napi::Env item_env = std::get<0>(*item_data);
+            Napi::Array& item_array = std::get<1>(*item_data);
+            uint32_t& idx = *static_cast<uint32_t*>(item_data->operator[](2));
+
+            obs_source_t* source = obs_sceneitem_get_source(item);
+            if (!source) return true;
+
+            Napi::Object source_obj = Napi::Object::New(item_env);
+            source_obj.Set("name", obs_source_get_name(source));
+            source_obj.Set("id", obs_source_get_id(source));
+
+            obs_data_t* settings = obs_source_get_settings(source);
+            source_obj.Set("settings", ObsDataToNapiObject(item_env, settings));
+            obs_data_release(settings);
+
+            // Get transform
+            obs_transform_info transform_info;
+            obs_sceneitem_get_info(item, &transform_info);
+            Napi::Object transform_obj = Napi::Object::New(item_env);
+            transform_obj.Set("posX", transform_info.pos.x);
+            transform_obj.Set("posY", transform_info.pos.y);
+            transform_obj.Set("rot", transform_info.rot);
+            transform_obj.Set("scaleX", transform_info.scale.x);
+            transform_obj.Set("scaleY", transform_info.scale.y);
+            transform_obj.Set("cropTop", transform_info.crop.top);
+            transform_obj.Set("cropBottom", transform_info.crop.bottom);
+            transform_obj.Set("cropLeft", transform_info.crop.left);
+            transform_obj.Set("cropRight", transform_info.crop.right);
+            source_obj.Set("transform", transform_obj);
+
+            item_array.Set(idx++, source_obj);
+            return true;
+        };
+
+        uint32_t s_idx = 0;
+        std::tuple<Napi::Env, Napi::Array&, uint32_t*> item_data = {env, sources_array, &s_idx};
+        obs_scene_enum_items(scene, enum_items, &item_data);
+
+        scene_obj.Set("sources", sources_array);
+        uint32_t& scene_idx_ref = *static_cast<uint32_t*>(data->operator[](2));
+        scenes_array.Set(scene_idx_ref++, scene_obj);
+
+        return true;
+    };
+
+    std::tuple<Napi::Env, Napi::Array&, uint32_t*> scene_data = {env, scenes_array, &scene_idx};
+    obs_enum_sources(enum_scenes, &scene_data);
+
+    result.Set("scenes", scenes_array);
+    return result;
+}
+
+Napi::Value LoadFullSceneData(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 1 || !info[0].IsObject()) {
+        throw Napi::Error::New(env, "Requires one argument: a scene data object");
+    }
+    Napi::Object data = info[0].As<Napi::Object>();
+    Napi::Array scenes_array = data.Get("scenes").As<Napi::Array>();
+
+    for (uint32_t i = 0; i < scenes_array.Length(); i++) {
+        Napi::Object scene_obj = scenes_array.Get(i).As<Napi::Object>();
+        std::string scene_name = scene_obj.Get("name").As<Napi::String>();
+
+        obs_scene_t* scene = obs_scene_create(scene_name.c_str());
+        obs_source_t* scene_source = (obs_source_t*)scene;
+
+        Napi::Array sources_array = scene_obj.Get("sources").As<Napi::Array>();
+        for (uint32_t j = 0; j < sources_array.Length(); j++) {
+            Napi::Object source_obj = sources_array.Get(j).As<Napi::Object>();
+            std::string source_name = source_obj.Get("name").As<Napi::String>();
+            std::string source_id = source_obj.Get("id").As<Napi::String>();
+
+            Napi::Object settings_obj = source_obj.Get("settings").As<Napi::Object>();
+            obs_data_t* settings = NapiObjectToObsData(env, settings_obj);
+
+            obs_source_t* new_source = obs_source_create(source_id.c_str(), source_name.c_str(), settings, nullptr);
+            obs_data_release(settings);
+
+            if (!new_source) continue;
+
+            obs_sceneitem_t* scene_item = obs_scene_add(scene, new_source);
+
+            // Apply transform
+            Napi::Object transform_obj = source_obj.Get("transform").As<Napi::Object>();
+            obs_transform_info transform_info;
+            transform_info.pos.x = transform_obj.Get("posX").As<Napi::Number>().FloatValue();
+            transform_info.pos.y = transform_obj.Get("posY").As<Napi::Number>().FloatValue();
+            transform_info.rot = transform_obj.Get("rot").As<Napi::Number>().FloatValue();
+            transform_info.scale.x = transform_obj.Get("scaleX").As<Napi::Number>().FloatValue();
+            transform_info.scale.y = transform_obj.Get("scaleY").As<Napi::Number>().FloatValue();
+            transform_info.crop.top = transform_obj.Get("cropTop").As<Napi::Number>().Int32Value();
+            transform_info.crop.bottom = transform_obj.Get("cropBottom").As<Napi::Number>().Int32Value();
+            transform_info.crop.left = transform_obj.Get("cropLeft").As<Napi::Number>().Int32Value();
+            transform_info.crop.right = transform_obj.Get("cropRight").As<Napi::Number>().Int32Value();
+            obs_sceneitem_set_info(scene_item, &transform_info);
+
+            obs_source_release(new_source);
+        }
+
+        // Set the first scene as the program scene
+        if (i == 0) {
+             obs_transition_set(g_main_transition, scene_source);
+        }
+
+        obs_scene_release(scene);
+    }
+    return env.Undefined();
+}
+
 
 // --- Module Initialization ---
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
@@ -637,6 +822,10 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("startRecording", Napi::Function::New(env, StartRecording));
   exports.Set("stopRecording", Napi::Function::New(env, StopRecording));
   exports.Set("isRecording", Napi::Function::New(env, IsRecording));
+
+  // Serialization Functions
+  exports.Set("getFullSceneData", Napi::Function::New(env, GetFullSceneData));
+  exports.Set("loadFullSceneData", Napi::Function::New(env, LoadFullSceneData));
 
   return exports;
 }
