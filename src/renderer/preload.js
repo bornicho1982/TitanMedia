@@ -2,6 +2,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
+// In this architecture, we are NOT using IPC for core functions for now
+// to avoid breaking the render loop. This is a temporary measure.
 const addonPath = path.join(__dirname, '../../build/Release/titan_media_core');
 const core = require(addonPath);
 
@@ -9,19 +11,18 @@ contextBridge.exposeInMainWorld('core', {
   // Core lifecycle
   startup: () => core.startup(),
   shutdown: () => core.shutdown(),
-
-  // Video Rendering
   getLatestFrame: () => core.getLatestFrame(),
 
   // Scene Management
   createScene: (name) => core.createScene(name),
+  removeScene: (name) => core.removeScene(name),
   getSceneList: () => core.getSceneList(),
+  getSceneSources: (sceneName) => core.getSceneSources(sceneName),
 
   // Studio Mode
   setPreviewScene: (sceneName) => core.setPreviewScene(sceneName),
-  executeTransition: () => core.executeTransition(),
-  getProgramSceneName: () => core.getProgramSceneName(),
-  getSceneSources: (sceneName) => core.getSceneSources(sceneName),
+  transition: () => core.executeTransition(),
+  getProgramScene: () => core.getProgramSceneName(),
 
   // Source Management
   addSource: (sceneName, sourceId, sourceName) => core.addSource(sceneName, sourceId, sourceName),
@@ -42,36 +43,28 @@ contextBridge.exposeInMainWorld('core', {
   stopRecording: () => core.stopRecording(),
   isRecording: () => core.isRecording(),
 
-  // Overlay Management
-  getOverlayTemplates: () => {
-    const overlaysDir = path.join(__dirname, 'overlays');
-    try {
-      const templateDirs = fs.readdirSync(overlaysDir, { withFileTypes: true })
-        .filter(dirent => dirent.isDirectory())
-        .map(dirent => dirent.name);
+  // Overlays (from main process due to FS access)
+  getOverlayTemplates: () => ipcRenderer.invoke('get-overlay-templates'),
 
-      return templateDirs.map(dir => ({
-        name: dir.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-        url: `file://${path.join(overlaysDir, dir, 'index.html')}`,
-        thumbnail: `./overlays/${dir}/thumbnail.png`
-      }));
-    } catch (error) {
-      console.error("Error reading overlay templates:", error);
-      return [];
-    }
-  },
-
+  // Filesystem (from main process for dialogs)
   selectLogo: () => ipcRenderer.invoke('select-logo'),
 
-  // Database
+  // Database (from main process)
   loadScenes: () => ipcRenderer.invoke('db-load-scenes'),
   loadFullSceneData: (sceneNames) => ipcRenderer.invoke('db-load-full-scene-data', sceneNames),
 
-  // Chat Management
-  chatConnect: (options) => ipcRenderer.invoke('chat-connect', options),
-  chatDisconnect: () => ipcRenderer.invoke('chat-disconnect'),
-  chatSendMessage: (channel, message) => ipcRenderer.invoke('chat-send-message', channel, message),
+  // Twitch Integration (from main process)
+  twitchLogin: () => ipcRenderer.invoke('twitch-login'),
+  twitchLogout: () => ipcRenderer.invoke('twitch-logout'),
+  getTwitchUser: () => ipcRenderer.invoke('twitch-get-user'),
+  getChannelInfo: () => ipcRenderer.invoke('twitch-get-channel-info'),
+  updateChannelInfo: (title, category) => ipcRenderer.invoke('twitch-update-channel-info', title, category),
+
+  // Chat
   onChatMessage: (callback) => ipcRenderer.on('chat-message', (_event, value) => callback(value)),
+  chatConnect: () => ipcRenderer.send('chat-connect'),
+  chatDisconnect: () => ipcRenderer.send('chat-disconnect'),
+  chatSendMessage: (channel, message) => ipcRenderer.send('chat-send-message', channel, message)
 });
 
 contextBridge.exposeInMainWorld('platform', {
