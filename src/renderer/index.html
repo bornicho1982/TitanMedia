@@ -13,27 +13,21 @@
         <div class="col-span-3 flex flex-col h-full">
             <!-- Studio Mode Previews -->
             <main class="flex-grow grid grid-cols-11 gap-2 p-4 bg-black rounded-t-lg">
-                <!-- Preview (5/11 width) -->
                 <div class="col-span-5 flex flex-col">
                     <h2 class="text-center font-bold mb-2">Previsualización</h2>
                     <canvas id="preview-canvas" class="border border-gray-700 w-full h-full"></canvas>
                 </div>
-
-                <!-- Transition Controls (1/11 width) -->
                 <div class="col-span-1 flex flex-col items-center justify-center">
                     <button id="transition-button" class="px-4 py-2 bg-gray-600 rounded hover:bg-gray-500">Transición</button>
                 </div>
-
-                <!-- Program (5/11 width) -->
                 <div class="col-span-5 flex flex-col">
                     <h2 class="text-center font-bold mb-2">Programa</h2>
                     <canvas id="program-canvas" class="border-2 border-red-600 w-full h-full"></canvas>
                 </div>
             </main>
 
-            <!-- Footer Panels: Scenes, Sources, Overlays, and Mixer -->
+            <!-- Footer Panels -->
             <footer class="grid grid-cols-4 gap-4 p-4 bg-gray-900 border-t-2 border-gray-700 rounded-b-lg" style="height: 250px;">
-                <!-- Scenes Panel -->
                 <div class="col-span-1 flex flex-col bg-gray-800 rounded-lg border border-gray-700">
                     <div class="flex items-center justify-between p-2 border-b border-gray-700">
                         <h2 class="font-bold">Escenas</h2>
@@ -42,58 +36,39 @@
                             <button id="remove-scene-button" class="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600">-</button>
                         </div>
                     </div>
-                    <ul id="scene-list" class="flex-grow p-2 overflow-y-auto">
-                        <!-- Scene items will be populated by JavaScript -->
-                    </ul>
+                    <ul id="scene-list" class="flex-grow p-2 overflow-y-auto"></ul>
                 </div>
-
-                <!-- Sources Panel -->
                 <div class="col-span-1 relative flex flex-col bg-gray-800 rounded-lg border border-gray-700">
-                <div class="flex items-center justify-between p-2 border-b border-gray-700">
-                    <h2 class="font-bold">Fuentes</h2>
-                    <div>
-                        <button id="add-source-button" class="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600">+</button>
-                        <button id="remove-source-button" class="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600">-</button>
+                    <div class="flex items-center justify-between p-2 border-b border-gray-700">
+                        <h2 class="font-bold">Fuentes</h2>
+                        <div>
+                            <button id="add-source-button" class="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600">+</button>
+                            <button id="remove-source-button" class="px-2 py-1 bg-gray-700 rounded hover:bg-gray-600">-</button>
+                        </div>
+                    </div>
+                    <ul id="source-list" class="flex-grow p-2 overflow-y-auto"></ul>
+                    <div id="source-menu" class="hidden absolute bottom-12 left-0 mb-1 w-full p-2 bg-gray-700 rounded-lg shadow-xl z-10">
+                        <ul class="space-y-1">
+                            <li><button data-source-id="video_capture_device" class="w-full text-left px-2 py-1 rounded hover:bg-gray-600">Dispositivo de Captura de Video</button></li>
+                            <li><button data-source-id="game_capture" class="w-full text-left px-2 py-1 rounded hover:bg-gray-600">Captura de Juego</button></li>
+                            <li><button data-source-id="browser_source" class="w-full text-left px-2 py-1 rounded hover:bg-gray-600">Fuente de Navegador</button></li>
+                            <li><button data-source-id="audio_input_capture" class="w-full text-left px-2 py-1 rounded hover:bg-gray-600">Entrada de Audio (Mic)</button></li>
+                            <li><button data-source-id="audio_output_capture" class="w-full text-left px-2 py-1 rounded hover:bg-gray-600">Salida de Audio (Escritorio)</button></li>
+                        </ul>
                     </div>
                 </div>
-                <ul id="source-list" class="flex-grow p-2 overflow-y-auto">
-                    <!-- Source items will be populated by JavaScript -->
-                </ul>
-                <!-- Source Selection Menu -->
-                <div id="source-menu" class="hidden absolute bottom-12 left-0 mb-1 w-full p-2 bg-gray-700 rounded-lg shadow-xl z-10">
-                    <ul class="space-y-1">
-                        <li><button data-source-id="video_capture_device" class="w-full text-left px-2 py-1 rounded hover:bg-gray-600">Dispositivo de Captura de Video</button></li>
-                        <li><button data-source-id="game_capture" class="w-full text-left px-2 py-1 rounded hover:bg-gray-600">Captura de Juego</button></li>
-                        <li><button data-source-id="browser_source" class="w-full text-left px-2 py-1 rounded hover:bg-gray-600">Fuente de Navegador</button></li>
-                        <li><button data-source-id="audio_input_capture" class="w-full text-left px-2 py-1 rounded hover:bg-gray-600">Entrada de Audio (Mic)</button></li>
-                        <li><button data-source-id="audio_output_capture" class="w-full text-left px-2 py-1 rounded hover:bg-gray-600">Salida de Audio (Escritorio)</button></li>
-                    </ul>
-                </div>
-            </div>
-
-            <!-- Overlays Panel -->
                 <div class="col-span-1 flex flex-col bg-gray-800 rounded-lg border border-gray-700">
-                <div class="flex items-center justify-between p-2 border-b border-gray-700">
-                    <h2 class="font-bold">Biblioteca de Overlays</h2>
+                    <div class="flex items-center justify-between p-2 border-b border-gray-700"><h2 class="font-bold">Biblioteca de Overlays</h2></div>
+                    <div id="overlay-gallery" class="flex-grow p-2 overflow-y-auto grid grid-cols-2 gap-2"></div>
                 </div>
-                <div id="overlay-gallery" class="flex-grow p-2 overflow-y-auto grid grid-cols-2 gap-2">
-                    <!-- Overlay templates will be populated here -->
-                </div>
-            </div>
-
-            <!-- Audio Mixer Panel -->
                 <div class="col-span-1 flex flex-col bg-gray-800 rounded-lg border border-gray-700">
-                <div class="flex items-center justify-between p-2 border-b border-gray-700">
-                    <h2 class="font-bold">Mezclador de Audio</h2>
+                    <div class="flex items-center justify-between p-2 border-b border-gray-700"><h2 class="font-bold">Mezclador de Audio</h2></div>
+                    <div id="audio-mixer-list" class="flex-grow p-2 overflow-y-auto space-y-4"></div>
                 </div>
-                <div id="audio-mixer-list" class="flex-grow p-2 overflow-y-auto space-y-4">
-                    <!-- Audio controls will be populated by JavaScript -->
-                </div>
-            </div>
-        </footer>
+            </footer>
         </div>
 
-        <!-- Controls Panel (1/5 width) -->
+        <!-- Controls Panel -->
         <aside class="col-span-1 flex flex-col bg-gray-900 rounded-lg border border-gray-700">
             <div class="p-4">
                 <h2 class="font-bold text-lg mb-4">Controles</h2>
@@ -103,16 +78,27 @@
                     <button id="settings-button" class="w-full px-4 py-2 bg-gray-600 rounded hover:bg-gray-500 mt-4">Ajustes</button>
                 </div>
             </div>
+            <!-- Stream Manager Panel (Initially Hidden) -->
+            <div id="stream-manager-panel" class="p-4 border-t border-gray-700 hidden">
+                <h2 class="font-bold text-lg mb-4">Gestor del Stream</h2>
+                <div class="space-y-4">
+                    <div>
+                        <label for="stream-title-input" class="block text-sm font-medium mb-1">Título</label>
+                        <input type="text" id="stream-title-input" class="bg-gray-800 border border-gray-600 rounded w-full p-2">
+                    </div>
+                    <div>
+                        <label for="stream-category-input" class="block text-sm font-medium mb-1">Categoría</label>
+                        <input type="text" id="stream-category-input" class="bg-gray-800 border border-gray-600 rounded w-full p-2">
+                    </div>
+                    <button id="update-stream-info-button" class="w-full px-4 py-2 bg-blue-600 rounded hover:bg-blue-500">Actualizar</button>
+                </div>
+            </div>
         </aside>
 
-        <!-- Chat Panel (1/5 width) -->
+        <!-- Chat Panel -->
         <div class="col-span-1 flex flex-col bg-gray-900 rounded-lg border border-gray-700 h-full">
-            <div class="p-4 border-b border-gray-700">
-                <h2 class="font-bold text-lg">Chat de Twitch</h2>
-            </div>
-            <div id="chat-messages" class="flex-grow p-4 overflow-y-auto">
-                <!-- Messages will be appended here -->
-            </div>
+            <div class="p-4 border-b border-gray-700"><h2 class="font-bold text-lg">Chat de Twitch</h2></div>
+            <div id="chat-messages" class="flex-grow p-4 overflow-y-auto"></div>
             <div class="p-4 border-t border-gray-700">
                 <div class="flex space-x-2">
                     <input type="text" id="chat-input" class="flex-grow bg-gray-800 rounded p-2" placeholder="Enviar mensaje...">
@@ -127,9 +113,7 @@
     <div id="properties-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-20">
         <div class="bg-gray-800 rounded-lg shadow-xl p-6 border border-gray-700 w-1/2 max-w-lg">
             <h2 id="properties-title" class="text-xl font-bold mb-4">Propiedades de: </h2>
-            <div id="properties-form-container" class="space-y-4 mb-6">
-                <!-- Dynamic form controls will be inserted here -->
-            </div>
+            <div id="properties-form-container" class="space-y-4 mb-6"></div>
             <div class="flex justify-end space-x-4">
                 <button id="properties-cancel-button" class="px-4 py-2 bg-gray-600 rounded hover:bg-gray-500">Cancelar</button>
                 <button id="properties-save-button" class="px-4 py-2 bg-blue-600 rounded hover:bg-blue-500">Guardar</button>
@@ -141,8 +125,6 @@
     <div id="settings-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-20">
         <div class="bg-gray-800 rounded-lg shadow-xl p-6 border border-gray-700 w-1/2 max-w-2xl">
             <h2 class="text-xl font-bold mb-4">Ajustes</h2>
-
-            <!-- Tabs -->
             <div class="border-b border-gray-700 mb-4">
                 <nav class="flex space-x-4" aria-label="Tabs">
                     <button class="tab-button active-tab" data-tab="stream">Transmisión</button>
@@ -151,46 +133,45 @@
                 </nav>
             </div>
 
-            <!-- Stream Tab Content -->
+            <!-- Stream Tab -->
             <div id="tab-content-stream" class="tab-content space-y-4 mb-6">
                 <div>
                     <label for="rtmp-server" class="block mb-1 text-sm font-medium">Servidor RTMP</label>
-                    <input type="text" id="rtmp-server" class="bg-gray-700 border border-gray-600 rounded w-full p-2" placeholder="rtmp://a.rtmp.youtube.com/live2">
+                    <input type="text" id="rtmp-server" class="bg-gray-700 border border-gray-600 rounded w-full p-2">
                 </div>
                 <div>
                     <label for="stream-key" class="block mb-1 text-sm font-medium">Clave de Transmisión</label>
-                    <input type="password" id="stream-key" class="bg-gray-700 border border-gray-600 rounded w-full p-2" placeholder="••••••••••••••••">
+                    <input type="password" id="stream-key" class="bg-gray-700 border border-gray-600 rounded w-full p-2">
                 </div>
             </div>
 
-            <!-- Branding Tab Content -->
+            <!-- Branding Tab -->
             <div id="tab-content-branding" class="hidden tab-content space-y-4 mb-6">
                 <div>
                     <label for="streamer-name" class="block mb-1 text-sm font-medium">Tu Nombre de Streamer</label>
                     <input type="text" id="streamer-name" class="bg-gray-700 border border-gray-600 rounded w-full p-2" placeholder="Ej: TitanGamer">
                 </div>
                 <div>
-                    <label for="brand-color" class="block mb-1 text-sm font-medium">Color Principal de tu Marca</label>
+                    <label for="brand-color" class="block mb-1 text-sm font-medium">Color Principal</label>
                     <input type="color" id="brand-color" class="bg-gray-700 border border-gray-600 rounded h-10 w-full p-1">
                 </div>
                  <div>
                     <label for="brand-logo" class="block mb-1 text-sm font-medium">Logo</label>
-                    <button id="logo-select-button" class="w-full px-4 py-2 bg-gray-600 rounded hover:bg-gray-500">Seleccionar Archivo de Logo</button>
+                    <button id="logo-select-button" class="w-full px-4 py-2 bg-gray-600 rounded hover:bg-gray-500">Seleccionar Logo</button>
                     <p id="logo-path" class="text-xs text-gray-400 mt-2">Ningún archivo seleccionado.</p>
                 </div>
             </div>
 
-            <!-- Accounts Tab Content -->
+            <!-- Accounts Tab -->
             <div id="tab-content-accounts" class="hidden tab-content space-y-4 mb-6">
                 <h3 class="text-lg font-semibold text-gray-300 border-b border-gray-700 pb-2">Twitch</h3>
-                <div>
-                    <label for="twitch-channel" class="block mb-1 text-sm font-medium">Nombre de tu Canal de Twitch</label>
-                    <input type="text" id="twitch-channel" class="bg-gray-700 border border-gray-600 rounded w-full p-2" placeholder="Ej: ninya">
+                <div id="twitch-logged-out-view">
+                     <p class="text-sm text-gray-400 mb-4">Conecta tu cuenta para activar el chat y el gestor del stream.</p>
+                    <button id="twitch-login-button" class="w-full px-4 py-2 bg-purple-600 rounded hover:bg-purple-500">Iniciar Sesión con Twitch</button>
                 </div>
-                <div>
-                    <label for="twitch-oauth" class="block mb-1 text-sm font-medium">Token de Chat OAuth</label>
-                    <input type="password" id="twitch-oauth" class="bg-gray-700 border border-gray-600 rounded w-full p-2" placeholder="oauth:xxxxxxxxxxxxxxxxxxxx">
-                    <p class="text-xs text-gray-400 mt-1">Puedes obtener tu token de <a href="https://twitchapps.com/tmi/" target="_blank" class="text-blue-400 hover:underline">Twitch TMI</a>.</p>
+                <div id="twitch-logged-in-view" class="hidden">
+                    <p class="text-sm">Conectado como: <span id="twitch-username-span" class="font-bold"></span></p>
+                    <button id="twitch-logout-button" class="w-full mt-4 px-4 py-2 bg-red-600 rounded hover:bg-red-500">Cerrar Sesión</button>
                 </div>
             </div>
 
