@@ -31,7 +31,6 @@ contextBridge.exposeInMainWorld('core', {
   addSource: (sceneName, sourceId, sourceName) => core.addSource(sceneName, sourceId, sourceName),
   removeSource: (sceneName, sourceName) => core.removeSource(sceneName, sourceName),
   getSourceProperties: (sourceName) => core.getSourceProperties(sourceName),
-  setSceneItemVisible: (sceneName, sourceName, visible) => core.setSceneItemVisible(sceneName, sourceName, visible),
   updateSourceProperties: (sourceName, properties) => core.updateSourceProperties(sourceName, properties),
 
   // Audio Management
@@ -68,22 +67,14 @@ contextBridge.exposeInMainWorld('core', {
 
   selectLogo: () => ipcRenderer.invoke('select-logo'),
 
-  // Twitch Integration
-  twitchLogin: () => ipcRenderer.invoke('twitch-login'),
-  twitchLogout: () => ipcRenderer.invoke('twitch-logout'),
-  getTwitchUser: () => ipcRenderer.invoke('get-twitch-user'),
-  getChannelInfo: () => ipcRenderer.invoke('get-channel-info'),
-  updateChannelInfo: (title, category) => ipcRenderer.invoke('update-channel-info', title, category),
-  chatConnect: () => ipcRenderer.invoke('chat-connect'),
+  // Chat Management
+  chatConnect: (options) => ipcRenderer.invoke('chat-connect', options),
   chatDisconnect: () => ipcRenderer.invoke('chat-disconnect'),
   chatSendMessage: (channel, message) => ipcRenderer.invoke('chat-send-message', channel, message),
   onChatMessage: (callback) => ipcRenderer.on('chat-message', (_event, value) => callback(value)),
 
   // Database
   loadScenes: () => ipcRenderer.invoke('db-load-scenes'),
-
-  // Twitch Events
-  onTwitchFollow: (callback) => ipcRenderer.on('twitch-event-follow', (_event, value) => callback(value)),
 });
 
 contextBridge.exposeInMainWorld('platform', {
