@@ -317,46 +317,95 @@ sourceMenu.addEventListener('click', async (event) => {
 // OBS Property Types Enum (for clarity)
 const OBS_PROPERTY_LIST = 4;
 
+// OBS Property Types Enum (for clarity, must match obs-properties.h)
+const OBS_PROPERTY_BOOL = 0;
+const OBS_PROPERTY_INT = 1;
+const OBS_PROPERTY_FLOAT = 2;
+const OBS_PROPERTY_TEXT = 3;
+const OBS_PROPERTY_LIST = 4;
+const OBS_PROPERTY_COLOR = 7;
+
 async function openPropertiesModal(sourceName) {
     propertiesTitle.textContent = `Propiedades de: ${sourceName}`;
-    propertiesFormContainer.innerHTML = ''; // Clear old form
+    propertiesFormContainer.innerHTML = '';
 
     try {
         const properties = await window.core.getSourceProperties(sourceName);
-        if (!properties) {
+        if (!properties || properties.length === 0) {
             propertiesFormContainer.innerHTML = '<p>Esta fuente no tiene propiedades configurables.</p>';
-            propertiesModal.classList.remove('hidden');
-            return;
+        } else {
+            properties.forEach(prop => {
+                const propContainer = document.createElement('div');
+                propContainer.className = 'mb-4';
+                const label = document.createElement('label');
+                label.textContent = prop.description;
+                label.className = 'block mb-1 text-sm font-medium';
+                propContainer.appendChild(label);
+
+                let control;
+                switch (prop.type) {
+                    case OBS_PROPERTY_BOOL:
+                        control = document.createElement('input');
+                        control.type = 'checkbox';
+                        control.name = prop.name;
+                        control.checked = prop.value;
+                        control.className = 'h-6 w-6 rounded text-purple-600 bg-gray-700 border-gray-600 focus:ring-purple-500';
+                        break;
+                    case OBS_PROPERTY_INT:
+                    case OBS_PROPERTY_FLOAT:
+                        control = document.createElement('input');
+                        control.type = 'range';
+                        control.name = prop.name;
+                        control.min = prop.min;
+                        control.max = prop.max;
+                        control.step = prop.step;
+                        control.value = prop.value;
+                        control.className = 'w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer';
+                        // Add a label to show the current value
+                        const valueLabel = document.createElement('span');
+                        valueLabel.textContent = ` (${prop.value})`;
+                        valueLabel.className = 'text-xs text-gray-400';
+                        label.appendChild(valueLabel);
+                        control.addEventListener('input', () => valueLabel.textContent = ` (${control.value})`);
+                        break;
+                    case OBS_PROPERTY_TEXT:
+                        control = document.createElement('input');
+                        control.type = 'text';
+                        control.name = prop.name;
+                        control.value = prop.value;
+                        control.className = 'bg-gray-700 border border-gray-600 rounded w-full p-2';
+                        break;
+                    case OBS_PROPERTY_COLOR:
+                        control = document.createElement('input');
+                        control.type = 'color';
+                        control.name = prop.name;
+                        // Convert integer color to hex
+                        control.value = `#${(prop.value & 0xFFFFFF).toString(16).padStart(6, '0')}`;
+                        control.className = 'bg-gray-700 border border-gray-600 rounded h-10 w-full p-1';
+                        break;
+                    case OBS_PROPERTY_LIST:
+                        control = document.createElement('select');
+                        control.name = prop.name;
+                        control.className = 'bg-gray-700 border border-gray-600 rounded w-full p-2';
+                        prop.options.forEach(option => {
+                            const opt = document.createElement('option');
+                            opt.value = option.value;
+                            opt.textContent = option.name;
+                            if (option.value === prop.value) {
+                                opt.selected = true;
+                            }
+                            control.appendChild(opt);
+                        });
+                        break;
+                }
+                if (control) {
+                    propContainer.appendChild(control);
+                }
+                propertiesFormContainer.appendChild(propContainer);
+            });
         }
-
-        properties.forEach(prop => {
-            const propContainer = document.createElement('div');
-            const label = document.createElement('label');
-            label.textContent = prop.description;
-            label.className = 'block mb-1 text-sm font-medium';
-            propContainer.appendChild(label);
-
-            if (prop.type === OBS_PROPERTY_LIST) {
-                const select = document.createElement('select');
-                select.name = prop.name;
-                select.className = 'bg-gray-700 border border-gray-600 rounded w-full p-2';
-                prop.options.forEach(option => {
-                    const opt = document.createElement('option');
-                    opt.value = option.value;
-                    opt.textContent = option.name;
-                    select.appendChild(opt);
-                });
-                propContainer.appendChild(select);
-            }
-            // TODO: Add handlers for other property types (bool, int, etc.)
-
-            propertiesFormContainer.appendChild(propContainer);
-        });
-
-        // Store the source name for the save handler
         propertiesSaveButton.dataset.sourceName = sourceName;
         propertiesModal.classList.remove('hidden');
-
     } catch (error) {
         console.error(`Failed to get source properties:`, error);
         alert(`Error al obtener las propiedades: ${error.message}`);
@@ -373,18 +422,35 @@ propertiesSaveButton.addEventListener('click', async () => {
 
     const newSettings = {};
     const formElements = propertiesFormContainer.querySelectorAll('select, input');
+
     formElements.forEach(el => {
-        // For now, we only handle select (string) values
-        if (el.tagName === 'SELECT') {
-            newSettings[el.name] = el.value;
+        const name = el.name;
+        switch (el.type) {
+            case 'checkbox':
+                newSettings[name] = el.checked;
+                break;
+            case 'range':
+            case 'number':
+                newSettings[name] = parseFloat(el.value);
+                break;
+            case 'color':
+                // Convert hex color #RRGGBB to an integer
+                newSettings[name] = parseInt(el.value.substring(1), 16);
+                break;
+            case 'text':
+            case 'select-one':
+            default:
+                newSettings[name] = el.value;
+                break;
         }
-        // TODO: Handle other input types
     });
 
     try {
         await window.core.updateSourceProperties(sourceName, newSettings);
-        console.log(`Updated properties for ${sourceName}`);
+        console.log(`Updated properties for ${sourceName}`, newSettings);
         propertiesModal.classList.add('hidden');
+        // A quick refresh of the source list can be good if names change, etc.
+        updateSourceList(activeScene);
     } catch (error) {
         console.error(`Failed to update properties:`, error);
         alert(`Error al actualizar las propiedades: ${error.message}`);
