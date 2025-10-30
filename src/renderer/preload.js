@@ -10,6 +10,10 @@ contextBridge.exposeInMainWorld('core', {
   startup: () => core.startup(),
   shutdown: () => core.shutdown(),
 
+  // Scene Serialization
+  getFullSceneData: () => core.getFullSceneData(),
+  loadFullSceneData: (data) => core.loadFullSceneData(data),
+
   // Video Rendering
   getLatestFrame: () => core.getLatestFrame(),
 
@@ -73,6 +77,9 @@ contextBridge.exposeInMainWorld('core', {
   chatDisconnect: () => ipcRenderer.invoke('chat-disconnect'),
   chatSendMessage: (channel, message) => ipcRenderer.invoke('chat-send-message', channel, message),
   onChatMessage: (callback) => ipcRenderer.on('chat-message', (_event, value) => callback(value)),
+
+  // Database
+  loadScenes: () => ipcRenderer.invoke('db-load-scenes'),
 });
 
 contextBridge.exposeInMainWorld('platform', {

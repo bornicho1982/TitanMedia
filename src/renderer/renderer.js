@@ -446,14 +446,23 @@ async function main() {
         loadSettings();
         setupSettingsModal();
         setupTwitchAuth();
-        setupStreamManager(); // New function for Stream Manager
+        setupStreamManager();
         setupChat();
 
+        const savedScenes = await window.core.loadScenes();
+        if (savedScenes && savedScenes.length > 0) {
+            await window.core.loadFullSceneData(savedScenes);
+            console.log("Loaded scenes from database.");
+        } else {
+            // If no scenes are loaded, create a default one
+            await window.core.createScene("Scene 1");
+             console.log("No saved scenes found. Created a default scene.");
+        }
+
         await updateSceneList();
-        await updateOverlayGallery(); // Populate overlays on startup
+        await updateOverlayGallery();
         const scenes = await window.core.getSceneList();
         if (scenes.length > 0) {
-            // Set the first scene as the active one for editing
             await setAsPreviewScene(scenes[0]);
         }
 
