@@ -42,10 +42,7 @@ void volmeter_callback(void *param, const float magnitude[MAX_AUDIO_CHANNELS],
                        const float peak[MAX_AUDIO_CHANNELS],
                        const float input_peak[MAX_AUDIO_CHANNELS]) {
     std::string* name = static_cast<std::string*>(param);
-
-    // We only care about the peak value of the first channel for simplicity
     float peak_db = obs_mul_to_db(peak[0]);
-
     std::lock_guard<std::mutex> lock(g_audio_mutex);
     g_peak_levels[*name] = peak_db;
 }
@@ -62,7 +59,6 @@ void main_render_callback(void *param, uint32_t cx, uint32_t cy) {
     uint8_t *video_data = nullptr;
     uint32_t video_linesize = 0;
 
-    // --- Render Program Texture ---
     if (gs_texture_map(program_tex, &video_data, &video_linesize)) {
         std::lock_guard<std::mutex> lock(g_frame_mutex);
         g_frame_width = width;
@@ -77,7 +73,6 @@ void main_render_callback(void *param, uint32_t cx, uint32_t cy) {
         gs_texture_unmap(program_tex);
     }
 
-    // --- Render Preview Texture ---
     if (g_preview_scene) {
         if (gs_texrender_begin(g_preview_texrender, width, height)) {
             obs_source_video_render(g_preview_scene);
@@ -105,21 +100,15 @@ void main_render_callback(void *param, uint32_t cx, uint32_t cy) {
 }
 
 // --- N-API Functions ---
-
 Napi::Value StartupOBS(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     if (obs_is_running) return env.Undefined();
-
     if (!obs_startup("en-US", nullptr, nullptr)) {
         throw Napi::Error::New(env, "obs_startup failed");
     }
-
-    // Create the main transition that will be our output source
     g_main_transition = obs_source_create("cut_transition", "Main Transition", nullptr, nullptr);
     obs_set_output_source(0, g_main_transition);
-
     g_preview_texrender = gs_texrender_create(GS_RGBA, GS_ZS_NONE);
-
     obs_add_main_render_callback(main_render_callback, nullptr);
     obs_is_running = true;
     return env.Undefined();
@@ -128,7 +117,6 @@ Napi::Value StartupOBS(const Napi::CallbackInfo& info) {
 Napi::Value ShutdownOBS(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     if (!obs_is_running) return env.Undefined();
-
     obs_remove_main_render_callback(main_render_callback, nullptr);
     gs_texrender_destroy(g_preview_texrender);
     obs_source_release(g_main_transition);
@@ -140,55 +128,39 @@ Napi::Value ShutdownOBS(const Napi::CallbackInfo& info) {
 Napi::Value GetLatestFrame(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     std::lock_guard<std::mutex> lock(g_frame_mutex);
-
     Napi::Object result = Napi::Object::New(env);
-
     if (!g_program_frame_data.empty()) {
-        Napi::Buffer<uint8_t> buffer = Napi::Buffer<uint8_t>::Copy(env, g_program_frame_data.data(), g_program_frame_data.size());
-        result.Set("programFrame", buffer);
+        result.Set("programFrame", Napi::Buffer<uint8_t>::Copy(env, g_program_frame_data.data(), g_program_frame_data.size()));
     }
     if (!g_preview_frame_data.empty()) {
-        Napi::Buffer<uint8_t> buffer = Napi::Buffer<uint8_t>::Copy(env, g_preview_frame_data.data(), g_preview_frame_data.size());
-        result.Set("previewFrame", buffer);
+        result.Set("previewFrame", Napi::Buffer<uint8_t>::Copy(env, g_preview_frame_data.data(), g_preview_frame_data.size()));
     }
-
-    result.Set("width", Napi::Number::New(env, g_frame_width));
-    result.Set("height", Napi::Number::New(env, g_frame_height));
+    result.Set("width", g_frame_width);
+    result.Set("height", g_frame_height);
     return result;
 }
 
 Napi::Value CreateScene(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     if (info.Length() < 1) throw Napi::Error::New(env, "Scene name is required.");
-
     std::string scene_name = info[0].As<Napi::String>();
     obs_scene_t *scene = obs_scene_create(scene_name.c_str());
     if (!scene) throw Napi::Error::New(env, "Failed to create scene.");
-
-    // If this is the first scene, set it to program view
     if (obs_transition_get_source(g_main_transition, OBS_TRANSITION_SOURCE_A) == nullptr) {
         obs_transition_set(g_main_transition, (obs_source_t*)scene);
     }
-
     obs_scene_release(scene);
     return env.Undefined();
 }
 
-// --- Studio Mode Functions ---
-
 Napi::Value SetPreviewScene(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     if (info.Length() < 1) throw Napi::Error::New(env, "Scene name is required.");
-
     std::string scene_name = info[0].As<Napi::String>();
     obs_source_t *source = obs_get_source_by_name(scene_name.c_str());
     if (!source) throw Napi::Error::New(env, "Scene not found.");
-
-    // With a simple transition like "cut", setting source B is not how it works.
-    // We set it as the *next* source for the main transition.
     obs_transition_set(g_main_transition, source);
-    g_preview_scene = source; // Keep a reference for manual rendering
-
+    g_preview_scene = source;
     obs_source_release(source);
     return env.Undefined();
 }
@@ -196,7 +168,7 @@ Napi::Value SetPreviewScene(const Napi::CallbackInfo& info) {
 Napi::Value ExecuteTransition(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     obs_transition_start(g_main_transition, OBS_TRANSITION_MODE_AUTO, 0, nullptr);
-    g_preview_scene = nullptr; // Preview becomes program, clear preview scene
+    g_preview_scene = nullptr;
     return env.Undefined();
 }
 
@@ -214,17 +186,16 @@ bool enum_scenes_callback(void *param, obs_source_t *source) {
         auto scene_names = static_cast<std::vector<std::string>*>(param);
         scene_names->push_back(obs_source_get_name(source));
     }
-    return true; // Continue enumeration
+    return true;
 }
 
 Napi::Value GetSceneList(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     std::vector<std::string> scene_names;
     obs_enum_sources(enum_scenes_callback, &scene_names);
-
     Napi::Array napi_array = Napi::Array::New(env, scene_names.size());
     for (size_t i = 0; i < scene_names.size(); ++i) {
-        napi_array[i] = Napi::String::New(env, scene_names[i]);
+        napi_array.Set(i, Napi::String::New(env, scene_names[i]));
     }
     return napi_array;
 }
@@ -238,15 +209,10 @@ bool enum_scene_sources_callback(obs_scene_t *scene, obs_sceneitem_t *item, void
     auto data = static_cast<SceneSourcesCallbackData*>(param);
     obs_source_t *source = obs_sceneitem_get_source(item);
     if (source) {
-        const char *name = obs_source_get_name(source);
         Napi::Object source_info = Napi::Object::New(data->env);
-        source_info.Set("name", Napi::String::New(data->env, name));
-
-        uint32_t flags = obs_source_get_output_flags(source);
-        bool has_audio = (flags & OBS_SOURCE_AUDIO) != 0;
-        source_info.Set("hasAudio", Napi::Boolean::New(data->env, has_audio));
-
-        data->array[data->array.Length()] = source_info;
+        source_info.Set("name", obs_source_get_name(source));
+        source_info.Set("hasAudio", (obs_source_get_output_flags(source) & OBS_SOURCE_AUDIO) != 0);
+        data->array.Set(data->array.Length(), source_info);
     }
     return true;
 }
@@ -254,54 +220,36 @@ bool enum_scene_sources_callback(obs_scene_t *scene, obs_sceneitem_t *item, void
 Napi::Value GetSceneSources(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     if (info.Length() < 1) throw Napi::Error::New(env, "Scene name is required.");
-
     std::string scene_name = info[0].As<Napi::String>();
     obs_source_t *scene_source = obs_get_source_by_name(scene_name.c_str());
     if (!scene_source) throw Napi::Error::New(env, "Scene not found.");
-
     obs_scene_t *scene = obs_scene_from_source(scene_source);
-
     SceneSourcesCallbackData data = {env, Napi::Array::New(env)};
     obs_scene_enum_items(scene, enum_scene_sources_callback, &data);
-
     obs_source_release(scene_source);
     return data.array;
 }
 
 Napi::Value AddSource(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
-    if (info.Length() < 3) {
-        throw Napi::Error::New(env, "Requires 3 arguments: sceneName, sourceId, sourceName");
-    }
-
+    if (info.Length() < 3) throw Napi::Error::New(env, "Requires 3 arguments: sceneName, sourceId, sourceName");
     std::string scene_name = info[0].As<Napi::String>();
     std::string source_id = info[1].As<Napi::String>();
     std::string source_name = info[2].As<Napi::String>();
-
     obs_source_t* scene_source = obs_get_source_by_name(scene_name.c_str());
-    if (!scene_source) {
-        throw Napi::Error::New(env, "Scene not found: " + scene_name);
-    }
-
+    if (!scene_source) throw Napi::Error::New(env, "Scene not found: " + scene_name);
     obs_scene_t* scene = obs_scene_from_source(scene_source);
     obs_source_t* new_source = obs_source_create(source_id.c_str(), source_name.c_str(), nullptr, nullptr);
-
     if (!new_source) {
         obs_source_release(scene_source);
         throw Napi::Error::New(env, "Failed to create source with id: " + source_id);
     }
-
     obs_scene_add(scene, new_source);
-
-    // --- Volmeter Management ---
-    uint32_t flags = obs_source_get_output_flags(new_source);
-    if ((flags & OBS_SOURCE_AUDIO) != 0) {
+    if ((obs_source_get_output_flags(new_source) & OBS_SOURCE_AUDIO) != 0) {
         std::lock_guard<std::mutex> lock(g_audio_mutex);
         obs_volmeter_t* volmeter = obs_volmeter_create(OBS_FADER_LOG);
         std::string* name_ptr = new std::string(source_name);
-
         obs_volmeter_add_callback(volmeter, volmeter_callback, name_ptr);
-
         if (obs_volmeter_attach_source(volmeter, new_source)) {
             g_volmeters[source_name] = {volmeter, name_ptr};
         } else {
@@ -309,33 +257,24 @@ Napi::Value AddSource(const Napi::CallbackInfo& info) {
             delete name_ptr;
         }
     }
-    // --- End Volmeter Management ---
-
     obs_source_release(new_source);
     obs_source_release(scene_source);
-
     return env.Undefined();
 }
 
 Napi::Value RemoveSource(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     if (info.Length() < 2) throw Napi::Error::New(env, "Requires 2 arguments: sceneName, sourceName");
-
     std::string scene_name = info[0].As<Napi::String>();
     std::string source_name = info[1].As<Napi::String>();
-
     obs_source_t* scene_source = obs_get_source_by_name(scene_name.c_str());
     if (!scene_source) throw Napi::Error::New(env, "Scene not found: " + scene_name);
-
     obs_scene_t* scene = obs_scene_from_source(scene_source);
     obs_sceneitem_t* scene_item = obs_scene_find_source_recursive(scene, source_name.c_str());
-
     if (scene_item) {
         obs_sceneitem_remove(scene_item);
         obs_sceneitem_release(scene_item);
     }
-
-    // --- Volmeter Management ---
     {
         std::lock_guard<std::mutex> lock(g_audio_mutex);
         auto it = g_volmeters.find(source_name);
@@ -346,8 +285,6 @@ Napi::Value RemoveSource(const Napi::CallbackInfo& info) {
             g_peak_levels.erase(source_name);
         }
     }
-    // --- End Volmeter Management ---
-
     obs_source_release(scene_source);
     return env.Undefined();
 }
@@ -355,10 +292,8 @@ Napi::Value RemoveSource(const Napi::CallbackInfo& info) {
 Napi::Value SetSourceMuted(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     if (info.Length() < 2) throw Napi::Error::New(env, "Requires 2 arguments: sourceName, muted");
-
     std::string source_name = info[0].As<Napi::String>();
     bool muted = info[1].As<Napi::Boolean>();
-
     obs_source_t* source = obs_get_source_by_name(source_name.c_str());
     if (source) {
         obs_source_set_muted(source, muted);
@@ -370,10 +305,8 @@ Napi::Value SetSourceMuted(const Napi::CallbackInfo& info) {
 Napi::Value IsSourceMuted(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     if (info.Length() < 1) throw Napi::Error::New(env, "Requires 1 argument: sourceName");
-
     std::string source_name = info[0].As<Napi::String>();
     bool muted = false;
-
     obs_source_t* source = obs_get_source_by_name(source_name.c_str());
     if (source) {
         muted = obs_source_muted(source);
@@ -386,90 +319,25 @@ Napi::Value GetAudioLevels(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     Napi::Object levels = Napi::Object::New(env);
     std::lock_guard<std::mutex> lock(g_audio_mutex);
-
     for (auto const& [name, peak] : g_peak_levels) {
-        levels.Set(name, Napi::Number::New(env, peak));
+        levels.Set(name, peak);
     }
-
     return levels;
-}
-
-
-Napi::Value GetSourceProperties(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
-    if (info.Length() < 1) {
-        throw Napi::Error::New(env, "Requires 1 argument: sourceName");
-    }
-    std::string source_name = info[0].As<Napi::String>();
-
-    obs_source_t* source = obs_get_source_by_name(source_name.c_str());
-    if (!source) {
-        return env.Null(); // Return null if source not found
-    }
-
-    obs_properties_t* properties = obs_source_properties(source);
-    obs_source_release(source); // Release the source reference
-
-    if (!properties) {
-        return env.Null(); // No properties available
-    }
-
-    Napi::Array result = Napi::Array::New(env);
-    obs_property_t* prop = obs_properties_first(properties);
-
-    while (prop) {
-        Napi::Object prop_obj = Napi::Object::New(env);
-        prop_obj.Set("name", obs_property_name(prop));
-        prop_obj.Set("description", obs_property_description(prop));
-
-        obs_property_type type = obs_property_get_type(prop);
-        prop_obj.Set("type", (int)type);
-
-        if (type == OBS_PROPERTY_LIST) {
-            Napi::Array options = Napi::Array::New(env);
-            size_t count = obs_property_list_item_count(prop);
-            for (size_t i = 0; i < count; ++i) {
-                const char* name = obs_property_list_item_name(prop, i);
-                // Assuming string values for simplicity now
-                const char* val_str_const = obs_property_list_item_string(prop, i);
-                std::string val_str = val_str_const ? val_str_const : "";
-
-                Napi::Object option = Napi::Object::New(env);
-                option.Set("name", name);
-                option.Set("value", val_str);
-                options[i] = option;
-            }
-            prop_obj.Set("options", options);
-        }
-
-        result[result.Length()] = prop_obj;
-        obs_property_next(&prop);
-    }
-
-    obs_properties_destroy(properties);
-    return result;
 }
 
 Napi::Value UpdateSourceProperties(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
-    if (info.Length() < 2) {
-        throw Napi::Error::New(env, "Requires 2 arguments: sourceName, propertiesObject");
-    }
+    if (info.Length() < 2) throw Napi::Error::New(env, "Requires 2 arguments: sourceName, propertiesObject");
     std::string source_name = info[0].As<Napi::String>();
     Napi::Object props_obj = info[1].As<Napi::Object>();
-
     obs_source_t* source = obs_get_source_by_name(source_name.c_str());
-    if (!source) {
-        throw Napi::Error::New(env, "Source not found: " + source_name);
-    }
-
+    if (!source) throw Napi::Error::New(env, "Source not found: " + source_name);
     obs_data_t* settings = obs_data_create();
     Napi::Array prop_names = props_obj.GetPropertyNames();
     for (uint32_t i = 0; i < prop_names.Length(); ++i) {
         Napi::Value key_val = prop_names.Get(i);
         std::string key = key_val.As<Napi::String>();
         Napi::Value val = props_obj.Get(key);
-
         if (val.IsString()) {
             obs_data_set_string(settings, key.c_str(), val.As<Napi::String>().Utf8Value().c_str());
         } else if (val.IsBoolean()) {
@@ -478,31 +346,20 @@ Napi::Value UpdateSourceProperties(const Napi::CallbackInfo& info) {
             obs_data_set_int(settings, key.c_str(), val.As<Napi::Number>().Int64Value());
         }
     }
-
     obs_source_update(source, settings);
-
     obs_data_release(settings);
     obs_source_release(source);
-
     return env.Undefined();
 }
 
-// --- Output Functions ---
-
 void SetupEncoders() {
-    // For simplicity, using x264 for video and AAC for audio
     g_video_encoder = obs_video_encoder_create("obs_x264", "simple_h264_stream", nullptr, nullptr);
-    // Note: fdk_aac might not be available on all builds, ffmpeg_aac is a safer default
     g_audio_encoder = obs_audio_encoder_create("ffmpeg_aac", "simple_aac", nullptr, 0, nullptr);
-
-    // Video encoder settings
     obs_data_t* video_settings = obs_data_create();
     obs_data_set_int(video_settings, "bitrate", 2500);
     obs_data_set_string(video_settings, "rate_control", "CBR");
     obs_encoder_update(g_video_encoder, video_settings);
     obs_data_release(video_settings);
-
-    // Audio encoder settings
     obs_data_t* audio_settings = obs_data_create();
     obs_data_set_int(audio_settings, "bitrate", 160);
     obs_encoder_update(g_audio_encoder, audio_settings);
@@ -512,32 +369,21 @@ void SetupEncoders() {
 Napi::Value StartStreaming(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     if (info.Length() < 2) throw Napi::Error::New(env, "Requires 2 arguments: server, key");
-
-    std::string server = info[0].As<Napi::String>();
-    std::string key = info[1].As<Napi::String>();
-
-    if (g_stream_output) return env.Undefined(); // Already streaming
-
-    SetupEncoders(); // Make sure encoders are ready
-
+    if (g_stream_output) return env.Undefined();
+    SetupEncoders();
     obs_data_t* settings = obs_data_create();
-    obs_data_set_string(settings, "server", server.c_str());
-    obs_data_set_string(settings, "key", key.c_str());
-
+    obs_data_set_string(settings, "server", info[0].As<Napi::String>().Utf8Value().c_str());
+    obs_data_set_string(settings, "key", info[1].As<Napi::String>().Utf8Value().c_str());
     g_stream_output = obs_output_create("rtmp_output", "simple_rtmp_stream", settings, nullptr);
     obs_data_release(settings);
-
     if (!g_stream_output) throw Napi::Error::New(env, "Failed to create stream output.");
-
     obs_encoder_set_video(g_video_encoder, obs_get_video());
     obs_encoder_set_audio(g_audio_encoder, obs_get_audio());
     obs_output_set_video_encoder(g_stream_output, g_video_encoder);
     obs_output_set_audio_encoder(g_stream_output, g_audio_encoder, 0);
-
     if (!obs_output_start(g_stream_output)) {
         throw Napi::Error::New(env, "Failed to start stream output.");
     }
-
     return env.Undefined();
 }
 
@@ -557,30 +403,22 @@ Napi::Value StopStreaming(const Napi::CallbackInfo& info) {
 
 Napi::Value IsStreaming(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
-    bool active = g_stream_output && obs_output_active(g_stream_output);
-    return Napi::Boolean::New(env, active);
+    return Napi::Boolean::New(env, g_stream_output && obs_output_active(g_stream_output));
 }
 
 Napi::Value StartRecording(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
-    if (g_record_output) return env.Undefined(); // Already recording
-
-    // Use separate encoders for recording if not already streaming
+    if (g_record_output) return env.Undefined();
     if (!g_video_encoder || !g_audio_encoder) {
         SetupEncoders();
     }
-
-    // For simplicity, hardcoding path. A real app would get this from settings.
     g_record_output = obs_output_create("ffmpeg_muxer", "simple_ffmpeg_muxer", nullptr, nullptr);
     if (!g_record_output) throw Napi::Error::New(env, "Failed to create record output.");
-
     obs_output_set_video_encoder(g_record_output, g_video_encoder);
     obs_output_set_audio_encoder(g_record_output, g_audio_encoder, 0);
-
     if (!obs_output_start(g_record_output)) {
         throw Napi::Error::New(env, "Failed to start record output.");
     }
-
     return env.Undefined();
 }
 
@@ -590,8 +428,6 @@ Napi::Value StopRecording(const Napi::CallbackInfo& info) {
         obs_output_stop(g_record_output);
         obs_output_release(g_record_output);
         g_record_output = nullptr;
-
-        // If we are not streaming, release the encoders too
         if (!g_stream_output) {
             obs_encoder_release(g_video_encoder);
             obs_encoder_release(g_audio_encoder);
@@ -604,13 +440,9 @@ Napi::Value StopRecording(const Napi::CallbackInfo& info) {
 
 Napi::Value IsRecording(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
-    bool active = g_record_output && obs_output_active(g_record_output);
-    return Napi::Boolean::New(env, active);
+    return Napi::Boolean::New(env, g_record_output && obs_output_active(g_record_output));
 }
 
-
-// --- Module Initialization ---
-// Helper to convert obs_data_t to a JSON string
 std::string ObsDataToJsonString(obs_data_t *settings) {
     if (!settings) return "{}";
     const char *json_string = obs_data_get_json(settings);
@@ -619,44 +451,35 @@ std::string ObsDataToJsonString(obs_data_t *settings) {
     return result;
 }
 
-// Callback for enumerating scene items (sources)
 bool enum_scene_items_callback(obs_scene_t *scene, obs_sceneitem_t *item, void *param) {
     auto scene_sources_array = static_cast<Napi::Array*>(param);
     Napi::Env env = scene_sources_array->Env();
-
     obs_source_t *source = obs_sceneitem_get_source(item);
     if (source) {
         Napi::Object source_info = Napi::Object::New(env);
         source_info.Set("name", obs_source_get_name(source));
         source_info.Set("type_id", obs_source_get_id(source));
-
         obs_data_t *settings = obs_source_get_settings(source);
         source_info.Set("settings", ObsDataToJsonString(settings));
         obs_data_release(settings);
-
-        scene_sources_array[scene_sources_array->Length()] = source_info;
+        scene_sources_array->Set(scene_sources_array->Length(), source_info);
     }
-    return true; // Continue enumeration
+    return true;
 }
 
-
-// Callback for enumerating scenes
 bool enum_scenes_for_data_callback(void *param, obs_source_t *source) {
     if (obs_source_get_type(source) == OBS_SOURCE_TYPE_SCENE) {
         auto scenes_array = static_cast<Napi::Array*>(param);
         Napi::Env env = scenes_array->Env();
-
         Napi::Object scene_info = Napi::Object::New(env);
         scene_info.Set("name", obs_source_get_name(source));
-
         Napi::Array sources_array = Napi::Array::New(env);
         obs_scene_t *scene = obs_scene_from_source(source);
         obs_scene_enum_items(scene, enum_scene_items_callback, &sources_array);
         scene_info.Set("sources", sources_array);
-
-        scenes_array[scenes_array->Length()] = scene_info;
+        scenes_array->Set(scenes_array->Length(), scene_info);
     }
-    return true; // Continue enumeration
+    return true;
 }
 
 Napi::Value GetFullSceneData(const Napi::CallbackInfo& info) {
@@ -666,95 +489,140 @@ Napi::Value GetFullSceneData(const Napi::CallbackInfo& info) {
     return scenes_array;
 }
 
-// Helper to remove all existing scenes
-void remove_all_scenes(void *param, obs_source_t *source) {
+bool remove_all_scenes(void *param, obs_source_t *source) {
     if (obs_source_get_type(source) == OBS_SOURCE_TYPE_SCENE) {
         obs_source_remove(source);
     }
+    return true;
 }
 
 Napi::Value LoadFullSceneData(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
-    if (info.Length() < 1 || !info[0].IsArray()) {
-        throw Napi::Error::New(env, "Requires an array of scene data.");
-    }
-
+    if (info.Length() < 1 || !info[0].IsArray()) throw Napi::Error::New(env, "Requires an array of scene data.");
     Napi::Array scenes_array = info[0].As<Napi::Array>();
-
-    // --- Clear existing scenes ---
     obs_enum_sources(remove_all_scenes, nullptr);
-
-    // --- Recreate scenes and sources ---
     for (uint32_t i = 0; i < scenes_array.Length(); ++i) {
         Napi::Object scene_data = scenes_array.Get(i).As<Napi::Object>();
         std::string scene_name = scene_data.Get("name").As<Napi::String>();
-
         obs_scene_t *scene = obs_scene_create(scene_name.c_str());
         if (!scene) continue;
-
-        Napi::Array sources_array = scene_data.Get("sources").As<Napi::Object>();
+        Napi::Array sources_array = scene_data.Get("sources").As<Napi::Array>();
         for (uint32_t j = 0; j < sources_array.Length(); ++j) {
             Napi::Object source_data = sources_array.Get(j).As<Napi::Object>();
-            std::string source_name = source_data.Get("name").As<Napi::String>();
-            std::string source_type_id = source_data.Get("type_id").As<Napi::String>();
-            std::string settings_json = source_data.Get("settings").As<Napi::String>();
-
-            obs_data_t *settings = obs_data_create_from_json(settings_json.c_str());
-            obs_source_t *new_source = obs_source_create(source_type_id.c_str(), source_name.c_str(), settings, nullptr);
+            obs_data_t *settings = obs_data_create_from_json(source_data.Get("settings").As<Napi::String>().Utf8Value().c_str());
+            obs_source_t *new_source = obs_source_create(
+                source_data.Get("type_id").As<Napi::String>().Utf8Value().c_str(),
+                source_data.Get("name").As<Napi::String>().Utf8Value().c_str(),
+                settings, nullptr);
             obs_data_release(settings);
-
             if (new_source) {
                 obs_scene_add(scene, new_source);
                 obs_source_release(new_source);
             }
         }
-
-        // If this is the first scene, set it as the program view.
         if (i == 0) {
            obs_set_output_source(0, (obs_source_t*)scene);
         }
-
         obs_scene_release(scene);
     }
-
     return env.Undefined();
 }
 
 Napi::Value SetSceneItemVisible(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
-    if (info.Length() < 3) {
-        throw Napi::Error::New(env, "Requires 3 arguments: sceneName, sourceName, visible");
-    }
-
+    if (info.Length() < 3) throw Napi::Error::New(env, "Requires 3 arguments: sceneName, sourceName, visible");
     std::string scene_name = info[0].As<Napi::String>();
     std::string source_name = info[1].As<Napi::String>();
     bool visible = info[2].As<Napi::Boolean>();
-
     obs_source_t* scene_source = obs_get_source_by_name(scene_name.c_str());
-    if (!scene_source) {
-        // It's not an error if the scene doesn't exist, just ignore.
-        return env.Undefined();
-    }
-
+    if (!scene_source) return env.Undefined();
     obs_scene_t* scene = obs_scene_from_source(scene_source);
     obs_sceneitem_t* scene_item = obs_scene_find_source_recursive(scene, source_name.c_str());
-
     if (scene_item) {
         obs_sceneitem_set_visible(scene_item, visible);
         obs_sceneitem_release(scene_item);
     }
-
     obs_source_release(scene_source);
     return env.Undefined();
 }
+
+obs_data_t* get_source_settings(obs_source_t* source) {
+    return obs_source_get_settings(source);
+}
+
+Napi::Value GetSourceProperties(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 1) throw Napi::Error::New(env, "Requires 1 argument: sourceName");
+    std::string source_name = info[0].As<Napi::String>();
+    obs_source_t* source = obs_get_source_by_name(source_name.c_str());
+    if (!source) return env.Null();
+    obs_data_t* settings = get_source_settings(source);
+    obs_properties_t* properties = obs_source_properties(source);
+    obs_source_release(source);
+    if (!properties) {
+        obs_data_release(settings);
+        return env.Null();
+    }
+    Napi::Array result = Napi::Array::New(env);
+    obs_property_t* prop = obs_properties_first(properties);
+    while (prop) {
+        Napi::Object prop_obj = Napi::Object::New(env);
+        const char* prop_name = obs_property_name(prop);
+        prop_obj.Set("name", prop_name);
+        prop_obj.Set("description", obs_property_description(prop));
+        obs_property_type type = obs_property_get_type(prop);
+        prop_obj.Set("type", (int)type);
+        switch(type) {
+            case OBS_PROPERTY_BOOL:
+                prop_obj.Set("value", obs_data_get_bool(settings, prop_name));
+                break;
+            case OBS_PROPERTY_INT:
+                prop_obj.Set("value", obs_data_get_int(settings, prop_name));
+                prop_obj.Set("min", obs_property_int_min(prop));
+                prop_obj.Set("max", obs_property_int_max(prop));
+                prop_obj.Set("step", obs_property_int_step(prop));
+                break;
+            case OBS_PROPERTY_FLOAT:
+                prop_obj.Set("value", obs_data_get_double(settings, prop_name));
+                prop_obj.Set("min", obs_property_float_min(prop));
+                prop_obj.Set("max", obs_property_float_max(prop));
+                prop_obj.Set("step", obs_property_float_step(prop));
+                break;
+            case OBS_PROPERTY_TEXT:
+                prop_obj.Set("value", obs_data_get_string(settings, prop_name));
+                break;
+            case OBS_PROPERTY_COLOR:
+                prop_obj.Set("value", (int)obs_data_get_int(settings, prop_name));
+                break;
+            case OBS_PROPERTY_LIST: {
+                Napi::Array options = Napi::Array::New(env);
+                size_t count = obs_property_list_item_count(prop);
+                for (size_t i = 0; i < count; ++i) {
+                    Napi::Object option = Napi::Object::New(env);
+                    option.Set("name", obs_property_list_item_name(prop, i));
+                    option.Set("value", obs_property_list_item_string(prop, i));
+                    options.Set(i, option);
+                }
+                prop_obj.Set("options", options);
+                prop_obj.Set("value", obs_data_get_string(settings, prop_name));
+                break;
+            }
+            default: break;
+        }
+        result.Set(result.Length(), prop_obj);
+        obs_property_next(&prop);
+    }
+    obs_properties_destroy(properties);
+    obs_data_release(settings);
+    return result;
+}
+
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("startup", Napi::Function::New(env, StartupOBS));
   exports.Set("shutdown", Napi::Function::New(env, ShutdownOBS));
   exports.Set("getLatestFrame", Napi::Function::New(env, GetLatestFrame));
   exports.Set("createScene", Napi::Function::New(env, CreateScene));
   exports.Set("getSceneList", Napi::Function::New(env, GetSceneList));
-
-  // Studio Mode Functions
   exports.Set("setPreviewScene", Napi::Function::New(env, SetPreviewScene));
   exports.Set("executeTransition", Napi::Function::New(env, ExecuteTransition));
   exports.Set("getProgramSceneName", Napi::Function::New(env, GetProgramSceneName));
@@ -766,23 +634,15 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("setSourceMuted", Napi::Function::New(env, SetSourceMuted));
   exports.Set("isSourceMuted", Napi::Function::New(env, IsSourceMuted));
   exports.Set("getAudioLevels", Napi::Function::New(env, GetAudioLevels));
-
-  // Output Functions
   exports.Set("startStreaming", Napi::Function::New(env, StartStreaming));
   exports.Set("stopStreaming", Napi::Function::New(env, StopStreaming));
   exports.Set("isStreaming", Napi::Function::New(env, IsStreaming));
   exports.Set("startRecording", Napi::Function::New(env, StartRecording));
   exports.Set("stopRecording", Napi::Function::New(env, StopRecording));
   exports.Set("isRecording", Napi::Function::New(env, IsRecording));
-
-  // --- Scene Serialization ---
   exports.Set("getFullSceneData", Napi::Function::New(env, GetFullSceneData));
   exports.Set("loadFullSceneData", Napi::Function::New(env, LoadFullSceneData));
-
-  // --- Source Visibility ---
   exports.Set("setSceneItemVisible", Napi::Function::New(env, SetSceneItemVisible));
-
-
   return exports;
 }
 
