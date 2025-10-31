@@ -148,7 +148,6 @@
                     <button class="tab-button active-tab" data-tab="stream">Transmisión</button>
                     <button class="tab-button" data-tab="branding">Branding</button>
                     <button class="tab-button" data-tab="accounts">Cuentas</button>
-                    <button class="tab-button" data-tab="bot">Bot de Chat</button>
                 </nav>
             </div>
 
@@ -184,52 +183,14 @@
             <!-- Accounts Tab Content -->
             <div id="tab-content-accounts" class="hidden tab-content space-y-4 mb-6">
                 <h3 class="text-lg font-semibold text-gray-300 border-b border-gray-700 pb-2">Twitch</h3>
-
-                <!-- Logged Out View -->
-                <div id="twitch-logged-out-view">
-                    <p class="text-sm text-gray-400 mb-4">Conecta tu cuenta de Twitch para habilitar el chat, las alertas y otras integraciones.</p>
-                    <button id="twitch-login-button" class="w-full px-4 py-2 bg-purple-600 rounded hover:bg-purple-500 flex items-center justify-center space-x-2">
-                        <span>Conectar con Twitch</span>
-                    </button>
+                <div>
+                    <label for="twitch-channel" class="block mb-1 text-sm font-medium">Nombre de tu Canal de Twitch</label>
+                    <input type="text" id="twitch-channel" class="bg-gray-700 border border-gray-600 rounded w-full p-2" placeholder="Ej: ninya">
                 </div>
-
-                <!-- Logged In View -->
-                <div id="twitch-logged-in-view" class="hidden">
-                    <div class="flex items-center space-x-4">
-                        <img id="twitch-user-avatar" src="" alt="Avatar" class="w-16 h-16 rounded-full">
-                        <div>
-                            <p class="text-lg font-bold">Conectado como:</p>
-                            <p id="twitch-user-name" class="text-gray-300"></p>
-                        </div>
-                    </div>
-                    <button id="twitch-logout-button" class="w-full mt-4 px-4 py-2 bg-red-600 rounded hover:bg-red-500">Desconectar</button>
-                </div>
-
-                 <!-- Loading View -->
-                <div id="twitch-loading-view" class="hidden text-center">
-                    <p>Comprobando estado de la conexión...</p>
-                </div>
-            </div>
-
-            <!-- Chat Bot Tab Content -->
-            <div id="tab-content-bot" class="hidden tab-content space-y-4 mb-6">
-                <div class="flex items-center justify-between">
-                    <label for="bot-enabled" class="text-sm font-medium">Activar Bot de Chat</label>
-                    <label class="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" id="bot-enabled" class="sr-only peer">
-                        <div class="w-11 h-6 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                    </label>
-                </div>
-                <div class="space-y-2 pt-4 border-t border-gray-700">
-                     <h3 class="text-lg font-semibold text-gray-300">Comandos</h3>
-                    <div class="flex space-x-2">
-                        <input type="text" id="bot-command-input" class="bg-gray-700 border border-gray-600 rounded w-1/3 p-2" placeholder="!comando">
-                        <input type="text" id="bot-response-input" class="bg-gray-700 border border-gray-600 rounded flex-grow p-2" placeholder="Respuesta del bot...">
-                        <button id="bot-add-command-button" class="px-4 py-2 bg-blue-600 rounded hover:bg-blue-500">Añadir</button>
-                    </div>
-                </div>
-                <div id="bot-command-list" class="space-y-2 pt-4 border-t border-gray-700" style="max-height: 200px; overflow-y: auto;">
-                    <!-- Los comandos se añadirán aquí dinámicamente -->
+                <div>
+                    <label for="twitch-oauth" class="block mb-1 text-sm font-medium">Token de Chat OAuth</label>
+                    <input type="password" id="twitch-oauth" class="bg-gray-700 border border-gray-600 rounded w-full p-2" placeholder="oauth:xxxxxxxxxxxxxxxxxxxx">
+                    <p class="text-xs text-gray-400 mt-1">Puedes obtener tu token de <a href="https://twitchapps.com/tmi/" target="_blank" class="text-blue-400 hover:underline">Twitch TMI</a>.</p>
                 </div>
             </div>
 

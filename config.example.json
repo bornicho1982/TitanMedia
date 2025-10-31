@@ -1,6 +1,0 @@
-{
-    "twitch": {
-        "clientId": "YOUR_TWITCH_CLIENT_ID_HERE",
-        "clientSecret": "YOUR_TWITCH_CLIENT_SECRET_HERE"
-    }
-}

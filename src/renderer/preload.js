@@ -9,8 +9,6 @@ contextBridge.exposeInMainWorld('core', {
   // Core lifecycle
   startup: () => core.startup(),
   shutdown: () => core.shutdown(),
-  getFullSceneData: () => core.getFullSceneData(),
-  loadFullSceneData: (data) => core.loadFullSceneData(data),
 
   // Video Rendering
   getLatestFrame: () => core.getLatestFrame(),
@@ -65,15 +63,11 @@ contextBridge.exposeInMainWorld('core', {
 
   selectLogo: () => ipcRenderer.invoke('select-logo'),
 
-  // Twitch & Chat Management
-  twitchLogin: () => ipcRenderer.invoke('twitch-login'),
-  twitchLogout: () => ipcRenderer.invoke('twitch-logout'),
-  getTwitchStatus: () => ipcRenderer.invoke('get-twitch-status'),
-  chatConnect: () => ipcRenderer.invoke('chat-connect'),
+  // Chat Management
+  chatConnect: (options) => ipcRenderer.invoke('chat-connect', options),
   chatDisconnect: () => ipcRenderer.invoke('chat-disconnect'),
   chatSendMessage: (channel, message) => ipcRenderer.invoke('chat-send-message', channel, message),
   onChatMessage: (callback) => ipcRenderer.on('chat-message', (_event, value) => callback(value)),
-  updateBotSettings: (settings) => ipcRenderer.send('update-bot-settings', settings),
 });
 
 contextBridge.exposeInMainWorld('platform', {
